@@ -11,4 +11,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
 
+# Default: run the continuous OAI-PMH harvester
+# Override with:
+#   docker-compose run ingestion python -m src.ingestion.seed --max-papers 5000
+#   docker-compose run ingestion python -m src.ingestion.bulk_import --file /data/arxiv.json
+#   docker-compose run ingestion python -m src.ingestion.enrich
+#   docker-compose run ingestion python -m src.ingestion.embed_backfill
 CMD ["python", "-m", "src.ingestion.worker"]

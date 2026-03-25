@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from xml.etree.ElementTree import fromstring
 
@@ -16,6 +17,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from src.core.config import get_settings
 from src.core.elasticsearch import get_es_client, ensure_index, close_es_client
 from src.core.embeddings import encode_texts
+from src.ingestion.state import save_state, get_state
 
 logger = structlog.get_logger()
 
@@ -199,34 +201,125 @@ async def index_batch(
     return success
 
 
-async def run_ingestion_cycle():
+async def run_ingestion_cycle(
+    from_date: str | None = None,
+    until_date: str | None = None,
+    skip_embeddings: bool = False,
+    set_spec: str | None = None,
+):
+    """Run one OAI-PMH harvest cycle with state tracking.
+
+    Args:
+        from_date: Harvest records from this date (YYYY-MM-DD). Auto-detected from state if None.
+        until_date: Harvest records until this date (YYYY-MM-DD). Defaults to today.
+        skip_embeddings: Skip embedding generation for faster indexing.
+        set_spec: OAI set to harvest (e.g. "cs" for all CS). None = all.
+    """
     settings = get_settings()
     es = await get_es_client()
     await ensure_index(es, settings.es_index, settings.embedding_dim)
 
-    logger.info("ingestion_cycle_start")
+    # Determine date range from state
+    source_key = f"oai:{set_spec or 'all'}"
+    state = await get_state(es, source_key)
+
+    if from_date is None and state and state.get("last_harvested_date"):
+        from_date = state["last_harvested_date"]
+        logger.info("resuming_from_state", from_date=from_date)
+
+    # Check for resumption token in state
+    resumption_token = None
+    if state and state.get("resumption_token") and state.get("status") == "interrupted":
+        resumption_token = state["resumption_token"]
+        logger.info("resuming_with_token", token=resumption_token[:50])
+
+    if until_date is None:
+        until_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    logger.info(
+        "ingestion_cycle_start",
+        from_date=from_date,
+        until_date=until_date,
+        set_spec=set_spec,
+        has_resume_token=resumption_token is not None,
+    )
+
     total_indexed = 0
+    start_time = time.monotonic()
+    current_date = from_date  # Track latest seen date
 
     async with httpx.AsyncClient() as http:
-        params = {
-            "verb": "ListRecords",
-            "metadataPrefix": "arXivRaw",
-        }
+        # Build initial params
+        if resumption_token:
+            params = {
+                "verb": "ListRecords",
+                "resumptionToken": resumption_token,
+            }
+        else:
+            params: dict[str, str] = {
+                "verb": "ListRecords",
+                "metadataPrefix": "arXivRaw",
+            }
+            if from_date:
+                params["from"] = from_date
+            if until_date:
+                params["until"] = until_date
+            if set_spec:
+                params["set"] = set_spec
+
+        page_count = 0
 
         while True:
-            papers, token = await fetch_oai_page(
-                http, settings.arxiv_oai_base_url, params
-            )
+            try:
+                papers, token = await fetch_oai_page(
+                    http, settings.arxiv_oai_base_url, params
+                )
+            except Exception as e:
+                logger.error("oai_fetch_error", error=str(e), page=page_count)
+                # Save interrupted state so we can resume
+                await save_state(
+                    es, source_key,
+                    last_harvested_date=current_date,
+                    resumption_token=params.get("resumptionToken"),
+                    total_harvested=total_indexed,
+                    status="interrupted",
+                )
+                raise
+
+            page_count += 1
 
             if papers:
-                papers = add_embeddings(papers)
+                # Track latest date seen
+                for p in papers:
+                    if p.get("submitted_date") and (not current_date or p["submitted_date"] > current_date):
+                        current_date = p["submitted_date"][:10]
+
+                if not skip_embeddings:
+                    papers = add_embeddings(papers)
+
                 count = await index_batch(es, settings.es_index, papers)
                 total_indexed += count
+
+                elapsed = time.monotonic() - start_time
+                rate = total_indexed / elapsed if elapsed > 0 else 0
+
                 logger.info(
                     "indexed_batch",
                     count=count,
                     total=total_indexed,
+                    page=page_count,
+                    rate=f"{rate:.0f}/s",
                     has_more=token is not None,
+                )
+
+            # Save progress periodically (every 10 pages)
+            if page_count % 10 == 0:
+                await save_state(
+                    es, source_key,
+                    last_harvested_date=current_date,
+                    resumption_token=token,
+                    total_harvested=total_indexed,
+                    status="running",
                 )
 
             if not token:
@@ -237,14 +330,35 @@ async def run_ingestion_cycle():
                 "resumptionToken": token,
             }
 
-            # Respect ArXiv rate limits
+            # Respect ArXiv rate limits (3 seconds between requests)
             await asyncio.sleep(3)
 
-    logger.info("ingestion_cycle_complete", total=total_indexed)
+    # Refresh to make docs searchable
+    await es.indices.refresh(index=settings.es_index)
+
+    elapsed = time.monotonic() - start_time
+    rate = total_indexed / elapsed if elapsed > 0 else 0
+
+    await save_state(
+        es, source_key,
+        last_harvested_date=until_date,
+        resumption_token=None,
+        total_harvested=total_indexed,
+        status="completed",
+    )
+
+    logger.info(
+        "ingestion_cycle_complete",
+        total=total_indexed,
+        pages=page_count,
+        elapsed=f"{elapsed:.0f}s",
+        rate=f"{rate:.0f}/s",
+    )
     return total_indexed
 
 
 async def main():
+    """Continuous harvesting loop with automatic incremental updates."""
     settings = get_settings()
     logger.info("ingestion_worker_start", interval_hours=settings.ingestion_interval_hours)
 
@@ -258,5 +372,26 @@ async def main():
         await asyncio.sleep(settings.ingestion_interval_hours * 3600)
 
 
+def cli_main():
+    """CLI entry point for manual harvesting."""
+    parser = argparse.ArgumentParser(description="ArXiv OAI-PMH harvester")
+    parser.add_argument("--from-date", help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--until-date", help="End date (YYYY-MM-DD)")
+    parser.add_argument("--set", dest="set_spec", help="OAI set (e.g. 'cs')")
+    parser.add_argument("--skip-embeddings", action="store_true")
+    parser.add_argument("--once", action="store_true", help="Run once, don't loop")
+    args = parser.parse_args()
+
+    if args.once:
+        asyncio.run(run_ingestion_cycle(
+            from_date=args.from_date,
+            until_date=args.until_date,
+            skip_embeddings=args.skip_embeddings,
+            set_spec=args.set_spec,
+        ))
+    else:
+        asyncio.run(main())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    cli_main()

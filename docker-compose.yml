@@ -89,6 +89,8 @@ services:
         condition: service_healthy
     networks:
       - arxiv-net
+    volumes:
+      - arxiv_data:/data
     read_only: true
     tmpfs:
       - /tmp
@@ -100,10 +102,64 @@ services:
           memory: 4g
           cpus: "2.0"
 
+  # One-shot seed service: docker-compose run seed
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingestion
+    container_name: arxiv-seed
+    env_file: .env
+    command: ["python", "-m", "src.ingestion.seed", "--max-papers", "2000"]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - arxiv-net
+    volumes:
+      - arxiv_data:/data
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - seed
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+          cpus: "2.0"
+
+  # One-shot enrichment: docker-compose run enrich
+  enrich:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingestion
+    container_name: arxiv-enrich
+    env_file: .env
+    command: ["python", "-m", "src.ingestion.enrich"]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - arxiv-net
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - enrich
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "1.0"
+
 volumes:
   es_data:
     driver: local
   redis_data:
+    driver: local
+  arxiv_data:
     driver: local
 
 networks:

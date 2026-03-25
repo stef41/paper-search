@@ -39,8 +39,48 @@ A high-performance, always up-to-date ArXiv search engine with advanced query ca
 
 ```bash
 cp .env.example .env
-docker-compose up -d
+
+# Start infrastructure
+docker-compose up -d elasticsearch redis api
+
+# Seed initial data (~40,000 papers from 20 ArXiv categories)
+docker-compose run --rm seed
+
+# Or seed faster without embeddings, add them later:
+docker-compose run --rm seed python -m src.ingestion.seed --max-papers 5000 --skip-embeddings
+docker-compose run --rm seed python -m src.ingestion.embed_backfill
+
+# Start continuous OAI-PMH harvester for ongoing updates
+docker-compose up -d ingestion
+
+# Enrich papers with Semantic Scholar citation data
+docker-compose --profile enrich run --rm enrich
 ```
+
+### Full Database Import (2.4M papers)
+
+Download the [Kaggle ArXiv dataset](https://www.kaggle.com/datasets/Cornell-University/arxiv):
+
+```bash
+# Place the JSON file in ./data/ directory
+docker-compose run --rm seed python -m src.ingestion.bulk_import \
+    --file /data/arxiv-metadata-oai-snapshot.json \
+    --skip-embeddings \
+    --batch-size 1000
+
+# Then backfill embeddings in background
+docker-compose run --rm seed python -m src.ingestion.embed_backfill
+```
+
+### Ingestion Commands
+
+| Command | Purpose |
+|---------|---------|
+| `src.ingestion.seed` | Fast initial load via ArXiv API (~200 papers/min) |
+| `src.ingestion.bulk_import` | Import Kaggle JSON snapshot (2.4M papers) |
+| `src.ingestion.worker` | Continuous OAI-PMH harvesting with state tracking |
+| `src.ingestion.enrich` | Add citation/h-index data from Semantic Scholar |
+| `src.ingestion.embed_backfill` | Generate embeddings for papers imported without them |
 
 ## API Documentation
 
