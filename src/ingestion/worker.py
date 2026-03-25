@@ -146,7 +146,7 @@ def parse_oai_record(record_xml: Any) -> dict | None:
 async def fetch_oai_page(
     client: httpx.AsyncClient, base_url: str, params: dict
 ) -> tuple[list[dict], str | None]:
-    resp = await client.get(base_url, params=params, timeout=60)
+    resp = await client.get(base_url, params=params, timeout=120)
     resp.raise_for_status()
 
     root = fromstring(resp.content)
@@ -248,7 +248,7 @@ async def run_ingestion_cycle(
     start_time = time.monotonic()
     current_date = from_date  # Track latest seen date
 
-    async with httpx.AsyncClient() as http:
+    async with httpx.AsyncClient(follow_redirects=True) as http:
         # Build initial params
         if resumption_token:
             params = {

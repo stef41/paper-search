@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     rate_limit_burst: int = 20
 
     # Ingestion
-    arxiv_oai_base_url: str = "http://export.arxiv.org/oai2"
+    arxiv_oai_base_url: str = "https://oaipmh.arxiv.org/oai"
     ingestion_batch_size: int = 500
     ingestion_interval_hours: int = 6
     semantic_model: str = "sentence-transformers/all-MiniLM-L6-v2"

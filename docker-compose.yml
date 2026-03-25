@@ -6,7 +6,7 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - xpack.security.http.ssl.enabled=false
-      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms2g -Xmx2g}
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms4g -Xmx4g}
       - cluster.routing.allocation.disk.threshold_enabled=false
     volumes:
       - es_data:/usr/share/elasticsearch/data
@@ -23,7 +23,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4g
+          memory: 8g
     ulimits:
       memlock:
         soft: -1

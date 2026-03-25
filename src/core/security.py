@@ -87,8 +87,8 @@ def validate_search_request(request: Any) -> None:
         if val:
             validate_regex_pattern(val, settings.max_regex_length)
 
-    if request.offset + request.limit > 50000:
+    if request.offset + request.limit > 10000:
         raise HTTPException(
             status_code=400,
-            detail="Cannot paginate beyond 50000 results",
+            detail="Cannot paginate beyond 10000 results. Use narrower filters.",
         )
