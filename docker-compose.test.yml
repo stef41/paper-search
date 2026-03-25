@@ -1,0 +1,63 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: arxiv-es-test
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - cluster.routing.allocation.disk.threshold_enabled=false
+    networks:
+      - arxiv-test-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+    tmpfs:
+      - /usr/share/elasticsearch/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: arxiv-redis-test
+    networks:
+      - arxiv-test-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: arxiv-test-runner
+    environment:
+      - ES_HOST=elasticsearch
+      - ES_PORT=9200
+      - ES_INDEX=arxiv_papers_test
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - API_KEYS=test-key-1,test-key-2
+      - RATE_LIMIT_PER_MINUTE=1000
+      - RATE_LIMIT_BURST=100
+      - EMBEDDING_DIM=384
+      - SEMANTIC_MODEL=sentence-transformers/all-MiniLM-L6-v2
+      - MAX_QUERY_LENGTH=2000
+      - MAX_REGEX_LENGTH=200
+      - REGEX_TIMEOUT_MS=1000
+      - CORS_ORIGINS=*
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arxiv-test-net
+
+networks:
+  arxiv-test-net:
+    driver: bridge
