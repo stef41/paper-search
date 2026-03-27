@@ -1092,16 +1092,16 @@ async def test_validation_invalid_pattern(c: httpx.AsyncClient):
 
 
 async def test_validation_max_hops_too_high(c: httpx.AsyncClient):
-    """max_hops > 5 should be rejected."""
+    """max_hops > 10 should be rejected."""
     name = "validation:max_hops_too_high"
     start = time.monotonic()
     resp = await c.post(f"{BASE}/graph", json={
-        "graph": {"type": "multihop_citation", "max_hops": 10,
+        "graph": {"type": "multihop_citation", "max_hops": 15,
                   "seed_arxiv_id": CONNECTED_PAPER},
     }, headers=HEADERS, timeout=TIMEOUT)
     elapsed = int((time.monotonic() - start) * 1000)
     if resp.status_code == 422:
-        ok(name, elapsed, "422 for max_hops=10")
+        ok(name, elapsed, "422 for max_hops=15")
     else:
         fail(name, elapsed, f"Expected 422, got {resp.status_code}")
 
@@ -1121,11 +1121,11 @@ async def test_validation_damping_out_of_range(c: httpx.AsyncClient):
 
 
 async def test_validation_iterations_out_of_range(c: httpx.AsyncClient):
-    """iterations > 50 should be rejected."""
+    """iterations > 100 should be rejected."""
     name = "validation:iterations_range"
     start = time.monotonic()
     resp = await c.post(f"{BASE}/graph", json={
-        "graph": {"type": "pagerank", "iterations": 100},
+        "graph": {"type": "pagerank", "iterations": 150},
     }, headers=HEADERS, timeout=TIMEOUT)
     elapsed = int((time.monotonic() - start) * 1000)
     if resp.status_code == 422:
