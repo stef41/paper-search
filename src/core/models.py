@@ -364,7 +364,7 @@ class PathFilter(BaseModel):
 class PipelineStep(BaseModel):
     """A single step in a graph algorithm pipeline."""
     type: str = Field(description="Graph query type to run at this step")
-    limit: int = Field(default=50, ge=1, le=200)
+    limit: int = Field(default=50, ge=1, le=10000)
     # Optional overrides for algorithm params
     params: dict[str, Any] = Field(default_factory=dict,
         description="Algorithm-specific params (damping_factor, iterations, etc.)")
@@ -391,7 +391,7 @@ class SubgraphFilter(BaseModel):
     seed_arxiv_ids: list[str] | None = Field(default=None, description="Start from these specific papers")
     direction: str = Field(default="both", pattern="^(references|cited_by|both)$",
         description="Which citation edges to include")
-    max_nodes: int = Field(default=500, ge=10, le=2000, description="Max nodes in the projected subgraph")
+    max_nodes: int = Field(default=500, ge=10, le=10000, description="Max nodes in the projected subgraph")
 
 
 class GraphQuery(BaseModel):
@@ -402,8 +402,8 @@ class GraphQuery(BaseModel):
     # Co-author network
     seed_author: str | None = Field(default=None, max_length=200,
         description="Seed author for coauthor_network queries")
-    depth: int = Field(default=1, ge=1, le=2,
-        description="Hop depth for network expansion (1 or 2)")
+    depth: int = Field(default=1, ge=1, le=5,
+        description="Hop depth for network expansion")
 
     # Category diversity / interdisciplinary / author bridge
     min_categories: int | None = Field(default=None, ge=2, le=50,
@@ -446,7 +446,7 @@ class GraphQuery(BaseModel):
         description="Minimum cosine similarity for paper_similarity edges")
 
     # Multi-hop traversal
-    max_hops: int = Field(default=2, ge=1, le=10,
+    max_hops: int = Field(default=2, ge=1, le=50,
         description="Maximum number of hops for multihop_citation traversal")
 
     # Shortest path
@@ -506,7 +506,7 @@ class GraphQuery(BaseModel):
         description="Edges in the structural pattern to match")
     where: list[WhereCondition] | None = Field(default=None,
         description="Cross-node predicates for pattern matching (like Cypher WHERE)")
-    max_expansion: int = Field(default=5, ge=1, le=10,
+    max_expansion: int = Field(default=5, ge=1, le=50,
         description="Max BFS expansion rounds for pattern_match neighbor discovery")
 
     # ── Pipeline composition ──
@@ -530,7 +530,7 @@ class GraphQuery(BaseModel):
         description="Filter paths by length or node properties (path variable binding)")
 
     # Pagination
-    limit: int = Field(default=50, ge=1, le=200)
+    limit: int = Field(default=50, ge=1, le=10000)
 
 
 class GraphNode(BaseModel):

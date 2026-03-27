@@ -58,8 +58,8 @@ logger = structlog.get_logger()
 class GraphEngine:
     """Executes graph-style queries against the ES index."""
 
-    MAX_AGG_BUCKETS = 500
-    MAX_RESULTS = 500
+    MAX_AGG_BUCKETS = 5000
+    MAX_RESULTS = 10000
 
     def __init__(self, client: AsyncElasticsearch, index: str):
         self.client = client
@@ -194,7 +194,7 @@ class GraphEngine:
                     v = n.properties.get(field)
                     if v is not None:
                         collected.append(v)
-                agg_results[agg.alias] = collected[:1000]
+                agg_results[agg.alias] = collected[:5000]
 
             elif fn == "group_count":
                 groups: Counter[str] = Counter()
@@ -1099,7 +1099,7 @@ class GraphEngine:
         # Fetch seed papers and their citation links
         seed_body = {
             "query": seed_query,
-            "size": min(limit * 2, 1000),
+            "size": min(limit * 2, 10000),
             "_source": ["arxiv_id", "title", "categories", field],
         }
         seed_resp = await self._do_search(seed_body, sr, emb)
@@ -1134,7 +1134,7 @@ class GraphEngine:
         # Step 2: fetch the linked papers from our index
         linked_query = {
             "query": {"terms": {"arxiv_id": list(linked_ids)[:10000]}},
-            "size": min(len(linked_ids), 1000),
+            "size": min(len(linked_ids), 10000),
             "_source": ["arxiv_id", "title", "categories", "primary_category",
                          "authors", "submitted_date", "citation_stats"],
         }
@@ -1259,7 +1259,7 @@ class GraphEngine:
         if gq.seed_arxiv_id:
             seed_query = {"term": {"arxiv_id": gq.seed_arxiv_id}}
         elif gq.seed_arxiv_ids:
-            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:200]}}
+            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:10000]}}
         else:
             base = self._base_query(sr, emb)
             seed_query = {
@@ -1268,7 +1268,7 @@ class GraphEngine:
 
         seed_body: dict[str, Any] = {
             "query": seed_query,
-            "size": min(limit, 200),
+            "size": min(limit * 10, 10000),
             "_source": [
                 "arxiv_id", "title", "categories", "primary_category",
                 "authors", "submitted_date", "citation_stats", field,
@@ -1542,7 +1542,7 @@ class GraphEngine:
         hidden connections between papers that share semantic content."""
         import numpy as np
 
-        limit = min(gq.limit or 30, 100)
+        limit = min(gq.limit or 50, self.MAX_RESULTS)
         threshold = gq.similarity_threshold
 
         if not self._first_boost_emb:
@@ -1896,10 +1896,10 @@ class GraphEngine:
         """Bibliographic coupling: papers sharing references.  Two papers
         with many shared references are likely studying the same problem.
         Edge weight = number of shared reference IDs."""
-        limit = min(gq.limit or 30, 100)
+        limit = min(gq.limit or 50, self.MAX_RESULTS)
 
         if gq.seed_arxiv_ids:
-            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:200]}}
+            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:10000]}}
         elif gq.seed_arxiv_id:
             seed_query = {"term": {"arxiv_id": gq.seed_arxiv_id}}
         else:
@@ -1979,10 +1979,10 @@ class GraphEngine:
         """Co-citation analysis: papers frequently cited together.  Two
         papers have a co-citation edge when many other papers cite both.
         Edge weight = number of co-citing papers."""
-        limit = min(gq.limit or 30, 100)
+        limit = min(gq.limit or 50, self.MAX_RESULTS)
 
         if gq.seed_arxiv_ids:
-            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:200]}}
+            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:10000]}}
         elif gq.seed_arxiv_id:
             seed_query = {"term": {"arxiv_id": gq.seed_arxiv_id}}
         else:
@@ -2070,7 +2070,7 @@ class GraphEngine:
         if gq.seed_arxiv_id:
             seed_query: dict[str, Any] = {"term": {"arxiv_id": gq.seed_arxiv_id}}
         elif gq.seed_arxiv_ids:
-            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:200]}}
+            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:10000]}}
         else:
             base = self._base_query(sr, emb)
             seed_query = {
@@ -2079,7 +2079,7 @@ class GraphEngine:
 
         seed_body: dict[str, Any] = {
             "query": seed_query,
-            "size": min(limit, 200),
+            "size": min(limit * 10, 10000),
             "_source": ["arxiv_id", "title", "categories", "primary_category",
                          "authors", "submitted_date", "citation_stats", field],
         }
@@ -2136,7 +2136,7 @@ class GraphEngine:
                 break
 
             # Fetch next hop papers (capped)
-            fetch_ids = list(next_ids)[:min(limit * 3, 2000)]
+            fetch_ids = list(next_ids)[:min(limit * 10, 10000)]
             hop_resp = await self._do_search({
                 "query": {"terms": {"arxiv_id": fetch_ids}},
                 "size": len(fetch_ids),
@@ -2201,8 +2201,8 @@ class GraphEngine:
             if not ids:
                 return {}
             resp = await self._do_search({
-                "query": {"terms": {"arxiv_id": ids[:1000]}},
-                "size": min(len(ids), 1000),
+                "query": {"terms": {"arxiv_id": ids[:10000]}},
+                "size": min(len(ids), 10000),
                 "_source": _FIELDS,
             })
             result: dict[str, dict] = {}
@@ -2361,7 +2361,7 @@ class GraphEngine:
         if gq.seed_arxiv_id:
             seed_query: dict[str, Any] = {"term": {"arxiv_id": gq.seed_arxiv_id}}
         elif gq.seed_arxiv_ids:
-            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:200]}}
+            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:10000]}}
         else:
             base = self._base_query(sr, emb)
             seed_query = {
@@ -2371,7 +2371,7 @@ class GraphEngine:
         # Fetch seed papers with their citation links
         seed_resp = await self._do_search({
             "query": seed_query,
-            "size": min(limit * 2, 1000),
+            "size": min(limit * 2, 10000),
             "_source": ["arxiv_id", "title", "categories", "primary_category",
                          "authors", "submitted_date", "citation_stats",
                          "reference_ids", "cited_by_ids"],
@@ -2392,11 +2392,11 @@ class GraphEngine:
                 all_linked.add(cid)
 
         # Fetch 1-hop neighborhood
-        missing = list(all_linked - set(paper_data.keys()))[:2000]
+        missing = list(all_linked - set(paper_data.keys()))[:10000]
         if missing:
             hop_resp = await self._do_search({
                 "query": {"terms": {"arxiv_id": missing}},
-                "size": min(len(missing), 1000),
+                "size": min(len(missing), 10000),
                 "_source": ["arxiv_id", "title", "categories", "primary_category",
                              "authors", "submitted_date", "citation_stats",
                              "reference_ids", "cited_by_ids"],
@@ -2430,7 +2430,8 @@ class GraphEngine:
         N = len(all_nodes_in_graph)
         ranks: dict[str, float] = {a: 1.0 / N for a in all_nodes_in_graph}
 
-        for _ in range(max_iter):
+        converged_at = max_iter
+        for it in range(max_iter):
             new_ranks: dict[str, float] = {}
             for node in all_nodes_in_graph:
                 rank_sum = 0.0
@@ -2439,7 +2440,11 @@ class GraphEngine:
                     if out_degree > 0:
                         rank_sum += ranks[in_node] / out_degree
                 new_ranks[node] = (1.0 - damping) / N + damping * rank_sum
+            max_delta = max(abs(new_ranks[n] - ranks[n]) for n in all_nodes_in_graph)
             ranks = new_ranks
+            if max_delta < 1e-6:
+                converged_at = it + 1
+                break
 
         # Step 3: Return top-ranked papers
         sorted_ranks = sorted(ranks.items(), key=lambda x: -x[1])[:limit]
@@ -2478,7 +2483,8 @@ class GraphEngine:
             total=N, took_ms=0,
             metadata={
                 "damping_factor": damping,
-                "iterations": max_iter,
+                "iterations": converged_at,
+                "converged": converged_at < max_iter,
                 "papers_in_subgraph": N,
                 "edges_in_subgraph": sum(len(v) for v in graph_out.values()),
                 "max_pagerank": round(sorted_ranks[0][1], 8) if sorted_ranks else 0,
@@ -2518,7 +2524,7 @@ class GraphEngine:
 
         resp = await self._do_search({
             "query": combined,
-            "size": min(limit * 4, 2000),
+            "size": min(limit * 4, 10000),
             "_source": ["arxiv_id", "title", "categories", "primary_category",
                          "authors", "submitted_date", "citation_stats",
                          "reference_ids", "cited_by_ids"],
@@ -2678,7 +2684,7 @@ class GraphEngine:
           - star:     one paper cited by many in the result set (hub)
           - chain:    A→B→C→D (longest citation chain)
         """
-        limit = min(gq.limit or 30, 100)
+        limit = min(gq.limit or 50, self.MAX_RESULTS)
         pattern = gq.pattern
 
         # Build a subgraph from search results
@@ -2697,7 +2703,7 @@ class GraphEngine:
 
         resp = await self._do_search({
             "query": combined,
-            "size": min(limit * 10, 2000),
+            "size": min(limit * 10, 10000),
             "_source": ["arxiv_id", "title", "categories", "primary_category",
                          "authors", "submitted_date", "citation_stats",
                          "reference_ids", "cited_by_ids"],
@@ -2880,7 +2886,7 @@ class GraphEngine:
 
         resp = await self._do_search({
             "query": combined,
-            "size": min(limit * 10, 2000),
+            "size": min(limit * 10, 10000),
             "_source": ["arxiv_id", "title", "categories", "primary_category",
                          "authors", "submitted_date", "citation_stats",
                          "reference_ids", "cited_by_ids"],
@@ -3007,7 +3013,7 @@ class GraphEngine:
         if gq.seed_arxiv_id:
             seed_query: dict[str, Any] = {"term": {"arxiv_id": gq.seed_arxiv_id}}
         elif gq.seed_arxiv_ids:
-            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:200]}}
+            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:10000]}}
         else:
             base = self._base_query(sr, emb)
             seed_query = {
@@ -3028,7 +3034,7 @@ class GraphEngine:
 
         resp = await self._do_search({
             "query": seed_query,
-            "size": min(limit * size_multiplier, 2000),
+            "size": min(limit * size_multiplier, 10000),
             "_source": _FIELDS,
         }, sr, emb)
 
@@ -3048,7 +3054,7 @@ class GraphEngine:
                     neighbor_ids.add(cid)
 
         # Fetch neighbors in batches (parallel)
-        neighbor_ids_list = list(neighbor_ids)[:2000]
+        neighbor_ids_list = list(neighbor_ids)[:10000]
         if neighbor_ids_list:
             batches = [neighbor_ids_list[i:i + 200] for i in range(0, len(neighbor_ids_list), 200)]
             results = await asyncio.gather(*(
@@ -3147,8 +3153,8 @@ class GraphEngine:
             to_fetch = [i for i in ids if i not in paper_cache]
             if to_fetch:
                 resp = await self._do_search({
-                    "query": {"terms": {"arxiv_id": to_fetch[:1000]}},
-                    "size": min(len(to_fetch), 1000),
+                    "query": {"terms": {"arxiv_id": to_fetch[:10000]}},
+                    "size": min(len(to_fetch), 10000),
                     "_source": _FIELDS,
                 })
                 for hit in resp["hits"]["hits"]:
@@ -3200,7 +3206,7 @@ class GraphEngine:
                 neighbors.add(cid)
 
             if neighbors:
-                await _fetch(list(neighbors)[:2000])
+                await _fetch(list(neighbors)[:10000])
 
             for nbr in neighbors:
                 if nbr in visited:
@@ -3294,7 +3300,7 @@ class GraphEngine:
         # Brandes' algorithm (undirected variant for efficiency)
         # Sample at most 100 source nodes for approximation on large graphs
         import random
-        sample = node_list if N <= 100 else random.sample(node_list, 100)
+        sample = node_list if N <= 500 else random.sample(node_list, min(N, 500))
 
         for s in sample:
             # BFS
@@ -4430,7 +4436,7 @@ class GraphEngine:
 
         # Pre-filter candidates (top by degree for efficiency)
         candidates = sorted(node_list, key=lambda x: -len(undirected.get(x, set())))
-        candidates = candidates[:min(len(candidates), 200)]
+        candidates = candidates[:min(len(candidates), 2000)]
 
         for _ in range(k):
             best_node = ""
@@ -4555,7 +4561,8 @@ class GraphEngine:
         auth = [1.0 / N] * N
         hub = [1.0 / N] * N
 
-        for _ in range(max_iter):
+        converged_at = max_iter
+        for it in range(max_iter):
             # Authority update: auth(v) = sum of hub(u) for all u→v
             new_auth = [0.0] * N
             for i, aid in enumerate(node_list):
@@ -4573,8 +4580,16 @@ class GraphEngine:
             # Normalize
             norm_a = math.sqrt(sum(a * a for a in new_auth)) or 1.0
             norm_h = math.sqrt(sum(h * h for h in new_hub)) or 1.0
-            auth = [a / norm_a for a in new_auth]
-            hub = [h / norm_h for h in new_hub]
+            new_auth = [a / norm_a for a in new_auth]
+            new_hub = [h / norm_h for h in new_hub]
+            # Convergence check
+            max_delta = max(max(abs(new_auth[i] - auth[i]) for i in range(N)),
+                           max(abs(new_hub[i] - hub[i]) for i in range(N)))
+            auth = new_auth
+            hub = new_hub
+            if max_delta < 1e-6:
+                converged_at = it + 1
+                break
 
         scored = [(node_list[i], auth[i], hub[i]) for i in range(N)]
         # Sort by authority score
@@ -4729,7 +4744,8 @@ class GraphEngine:
 
         katz = [1.0] * N
 
-        for _ in range(max_iter):
+        converged_at = max_iter
+        for it in range(max_iter):
             new_katz = [1.0] * N  # β = 1
             for i, aid in enumerate(node_list):
                 for nbr in undirected.get(aid, set()):
@@ -4738,7 +4754,12 @@ class GraphEngine:
                         new_katz[i] += alpha * katz[j]
             # Normalize
             norm = math.sqrt(sum(k * k for k in new_katz)) or 1.0
-            katz = [k / norm for k in new_katz]
+            new_katz = [k / norm for k in new_katz]
+            max_delta = max(abs(new_katz[i] - katz[i]) for i in range(N))
+            katz = new_katz
+            if max_delta < 1e-6:
+                converged_at = it + 1
+                break
 
         scored = sorted(
             [(node_list[i], katz[i]) for i in range(N)],
@@ -5961,7 +5982,7 @@ class GraphEngine:
 
         # Compute similarities for top-degree nodes (cap for performance)
         active.sort(key=lambda x: -len(undirected.get(x, set())))
-        active = active[:min(len(active), 200)]
+        active = active[:min(len(active), 2000)]
 
         pairs: list[tuple[str, str, float]] = []
         for i in range(len(active)):
@@ -6116,7 +6137,7 @@ class GraphEngine:
                 paper_cats[aid] = set(src.get("categories", []))
 
             paper_list = sorted(paper_data.keys(), key=lambda x: -len(paper_cats.get(x, set())))
-            paper_list = paper_list[:min(len(paper_list), 200)]
+            paper_list = paper_list[:min(len(paper_list), 2000)]
 
             pairs_p: list[tuple[str, str, int]] = []
             for i in range(len(paper_list)):
@@ -6182,7 +6203,7 @@ class GraphEngine:
 
         # Top-degree nodes for performance
         active = sorted(node_list, key=lambda x: -len(undirected.get(x, set())))
-        active = active[:min(len(active), 200)]
+        active = active[:min(len(active), 2000)]
 
         pairs: list[tuple[str, str, float]] = []
         for i in range(len(active)):
@@ -6283,7 +6304,7 @@ class GraphEngine:
 
         resp = await self._do_search({
             "query": anchor_query,
-            "size": min(limit * 25, 1000),
+            "size": min(limit * 25, 10000),
             "_source": _FIELDS,
         }, sr, emb)
 
@@ -6297,7 +6318,7 @@ class GraphEngine:
                                  metadata={"error": "no papers match anchor node filters"})
 
         # ── Step 2: BFS-expand to cover edges, fetching neighbors ──
-        max_expansion = min(gq.max_expansion, 10)
+        max_expansion = gq.max_expansion
         already_attempted: set[str] = set()  # Track IDs we already tried to fetch
         for _ in range(max_expansion):
             neighbor_ids: set[str] = set()
@@ -6309,7 +6330,7 @@ class GraphEngine:
                     if cid not in paper_cache and cid not in already_attempted:
                         neighbor_ids.add(cid)
 
-            to_fetch = list(neighbor_ids)[:2000]
+            to_fetch = list(neighbor_ids)[:10000]
             if not to_fetch:
                 break
             already_attempted.update(to_fetch)
@@ -6630,7 +6651,7 @@ class GraphEngine:
             # Apply node filters
             used = {v for v in assignment.values() if v is not None}
             found_any = False
-            cand_iter = islice(candidates, 1000)  # O(k) vs O(n log n) for sorted
+            cand_iter = islice(candidates, 5000)  # O(k) vs O(n log n) for sorted
             for cand in cand_iter:
                 if cand in used:
                     continue
@@ -6795,7 +6816,7 @@ class GraphEngine:
                                              "completed_steps": step_idx,
                                              "step_results": step_results,
                                          })
-                step_params["seed_arxiv_ids"] = current_paper_ids[:200]
+                step_params["seed_arxiv_ids"] = current_paper_ids[:2000]
 
             step_gq = GraphQuery(**step_params)
 
@@ -6903,7 +6924,7 @@ class GraphEngine:
         final_params = {"type": last_step.type, "limit": final_limit}
         final_params.update(last_step.params)
         if current_paper_ids:
-            final_params["seed_arxiv_ids"] = current_paper_ids[:200]
+            final_params["seed_arxiv_ids"] = current_paper_ids[:2000]
 
         final_gq = GraphQuery(**final_params)
         final_type = GraphQueryType(last_step.type)
@@ -7051,7 +7072,7 @@ class GraphEngine:
         ]}})
 
         if sf.seed_arxiv_ids:
-            query = {"terms": {"arxiv_id": sf.seed_arxiv_ids[:200]}}
+            query = {"terms": {"arxiv_id": sf.seed_arxiv_ids[:10000]}}
         elif musts or filters:
             query = {"bool": {}}
             if musts:
@@ -7064,7 +7085,7 @@ class GraphEngine:
         # ── Step 2: Fetch the projected subgraph ──
         resp = await self._do_search({
             "query": query,
-            "size": min(sf.max_nodes, 2000),
+            "size": min(sf.max_nodes, 10000),
             "_source": _FIELDS,
         }, sr, emb)
 
@@ -7088,7 +7109,7 @@ class GraphEngine:
                     for cid in (src.get("cited_by_ids", []) or []):
                         neighbor_ids.add(cid)
 
-            to_fetch = [nid for nid in neighbor_ids if nid not in paper_data][:2000]
+            to_fetch = [nid for nid in neighbor_ids if nid not in paper_data][:10000]
             fetch_batches = [to_fetch[i:i + 100] for i in range(0, len(to_fetch), 100)]
             async def _fetch_subgraph_batch(batch: list[str]) -> dict:
                 nbr_query: dict[str, Any] = {"terms": {"arxiv_id": batch}}
@@ -7145,13 +7166,13 @@ class GraphEngine:
 
         # For algorithms needing seed_arxiv_ids, pass paper IDs from the subgraph
         if sf.seed_arxiv_ids:
-            algo_params["seed_arxiv_ids"] = sf.seed_arxiv_ids[:200]
+            algo_params["seed_arxiv_ids"] = sf.seed_arxiv_ids[:10000]
 
         algo_gq = GraphQuery(**algo_params)
 
         # Create a synthetic SearchRequest that limits to our exact paper IDs
         # We do this by using seed_arxiv_ids to constrain the search
-        algo_gq.seed_arxiv_ids = list(paper_data.keys())[:200]
+        algo_gq.seed_arxiv_ids = list(paper_data.keys())[:2000]
 
         handler = {
             GraphQueryType.CATEGORY_DIVERSITY: self._category_diversity,
