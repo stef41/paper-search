@@ -456,7 +456,7 @@ class GraphQuery(BaseModel):
     # PageRank
     damping_factor: float = Field(default=0.85, ge=0.1, le=0.99,
         description="PageRank damping factor (default 0.85)")
-    iterations: int = Field(default=20, ge=1, le=100,
+    iterations: int = Field(default=20, ge=1, le=500,
         description="PageRank iterations")
 
     # Citation patterns
@@ -472,7 +472,7 @@ class GraphQuery(BaseModel):
         description="Link prediction method: common_neighbors, jaccard, adamic_adar, preferential_attachment")
 
     # Influence maximization
-    influence_seeds: int = Field(default=5, ge=1, le=50,
+    influence_seeds: int = Field(default=5, ge=1, le=200,
         description="Number of seed papers to select for influence maximization")
 
     # Degree centrality
