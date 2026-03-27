@@ -70,8 +70,18 @@ class TestEdgeCases:
             json={"query": "'; DROP TABLE papers; --"},
             headers=auth_headers(),
         )
+        # Must not cause a server error — injection is safely treated as text
         assert resp.status_code == 200
-        assert resp.json()["total"] == 0
+        data = resp.json()
+        assert "hits" in data
+        # Verify no SQL was executed (papers still searchable)
+        check = client.post(
+            "/search",
+            json={"query": "neural networks"},
+            headers=auth_headers(),
+        )
+        assert check.status_code == 200
+        assert check.json()["total"] > 0
 
     @pytest.mark.edge
     @pytest.mark.integration

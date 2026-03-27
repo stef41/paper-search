@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
+import time
 import structlog
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +11,54 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi.responses import JSONResponse
+from starlette.responses import Response
+
+
+def _get_client_ip(request: Request) -> str:
+    """Get the real client IP.
+
+    When behind a trusted reverse proxy (nginx, Cloudflare, ALB, etc.),
+    reads X-Forwarded-For. Otherwise uses the raw socket IP.
+    Set TRUSTED_PROXIES env var to a comma-separated list of proxy IPs
+    (e.g. "127.0.0.1,10.0.0.0/8") to enable proxy header trust.
+    Without TRUSTED_PROXIES, X-Forwarded-For is ignored (safe default).
+    """
+    import ipaddress
+    import os
+
+    raw_ip = request.client.host if request.client else "unknown"
+
+    trusted = os.environ.get("TRUSTED_PROXIES", "")
+    if not trusted:
+        return raw_ip
+
+    # Check if the direct connection is from a trusted proxy
+    trusted_nets = []
+    for cidr in trusted.split(","):
+        cidr = cidr.strip()
+        if not cidr:
+            continue
+        try:
+            trusted_nets.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError:
+            continue
+
+    try:
+        client_addr = ipaddress.ip_address(raw_ip)
+    except ValueError:
+        return raw_ip
+
+    is_trusted = any(client_addr in net for net in trusted_nets)
+    if not is_trusted:
+        return raw_ip
+
+    # Connection is from a trusted proxy — read the forwarded header
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        # Leftmost IP is the original client
+        return forwarded.split(",")[0].strip()
+
+    return raw_ip
 
 from src.core.config import get_settings
 from src.core.elasticsearch import get_es_client, close_es_client, ensure_index
@@ -17,12 +68,34 @@ from src.core.models import (
     SearchRequest,
     SearchResponse,
     StatsResponse,
+    GraphSearchRequest,
+    GraphResponse,
+    SemanticQuery,
 )
 from src.core.search import SearchEngine
+from src.core.graph import GraphEngine
 from src.core.security import verify_api_key, validate_search_request
 from src.core.embeddings import encode_text, get_cached_embedding, cache_embedding
 
 logger = structlog.get_logger()
+
+
+async def _resolve_embeddings(
+    sem_list: list[SemanticQuery] | None,
+) -> list[tuple[SemanticQuery, list[float]]]:
+    """Compute (or cache-lookup) embeddings for each SemanticQuery."""
+    if not sem_list:
+        return []
+    from src.core.redis import get_redis_client
+    redis_client = await get_redis_client()
+    result: list[tuple[SemanticQuery, list[float]]] = []
+    for sq in sem_list:
+        emb = await get_cached_embedding(redis_client, sq.text, sq.level.value)
+        if emb is None:
+            emb = encode_text(sq.text)
+            await cache_embedding(redis_client, sq.text, sq.level.value, emb)
+        result.append((sq, emb))
+    return result
 
 
 @asynccontextmanager
@@ -50,8 +123,8 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
 
-    # Rate limiting
-    limiter = Limiter(key_func=get_remote_address)
+    # Rate limiting (uses raw socket IP, not X-Forwarded-For)
+    limiter = Limiter(key_func=_get_client_ip)
     app.state.limiter = limiter
 
     @app.exception_handler(RateLimitExceeded)
@@ -72,6 +145,39 @@ def create_app() -> FastAPI:
         max_age=3600,
     )
 
+    # ── IP-level DDoS rate limiter (runs before everything else) ──
+    _ddos_limit, _ddos_window_str = settings.ddos_rate_limit.split("/")
+    _ddos_max = int(_ddos_limit)
+    _ddos_window = {"second": 1, "minute": 60, "hour": 3600}.get(_ddos_window_str, 60)
+    _ip_hits: dict[str, list[float]] = defaultdict(list)
+
+    @app.middleware("http")
+    async def ddos_guard(request: Request, call_next):
+        client_ip = _get_client_ip(request)
+        now = time.monotonic()
+        cutoff = now - _ddos_window
+
+        # Prune old entries and append current
+        hits = _ip_hits[client_ip]
+        # Fast prune: find first entry within window
+        lo = 0
+        while lo < len(hits) and hits[lo] < cutoff:
+            lo += 1
+        if lo:
+            _ip_hits[client_ip] = hits = hits[lo:]
+
+        if len(hits) >= _ddos_max:
+            logger.warning("ddos_blocked", ip=client_ip, hits=len(hits), window=_ddos_window)
+            return Response(
+                content='{"detail":"Too many requests from this IP. Slow down."}',
+                status_code=429,
+                media_type="application/json",
+            )
+
+        hits.append(now)
+        response = await call_next(request)
+        return response
+
     # Security headers middleware
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -86,18 +192,14 @@ def create_app() -> FastAPI:
 
     # ── Routes ──
 
-    @app.get("/health", response_model=HealthResponse)
+    @app.get("/health")
     async def health():
         es_status = "unknown"
         redis_status = "unknown"
-        total = 0
         try:
             es = await get_es_client()
             info = await es.cluster.health()
             es_status = info["status"]
-            settings = get_settings()
-            count = await es.count(index=settings.es_index)
-            total = count["count"]
         except Exception:
             es_status = "error"
 
@@ -109,12 +211,7 @@ def create_app() -> FastAPI:
             redis_status = "error"
 
         status = "healthy" if es_status in ("green", "yellow") and redis_status == "ok" else "degraded"
-        return HealthResponse(
-            status=status,
-            elasticsearch=es_status,
-            redis=redis_status,
-            total_papers=total,
-        )
+        return {"status": status}
 
     @app.post(
         "/search",
@@ -125,23 +222,34 @@ def create_app() -> FastAPI:
     async def search(request: Request, body: SearchRequest):
         validate_search_request(body)
 
-        # Handle semantic embedding
-        embedding = None
-        if body.semantic:
-            redis_client = await get_redis_client()
-            embedding = await get_cached_embedding(
-                redis_client, body.semantic.text, body.semantic.level.value
-            )
-            if embedding is None:
-                embedding = encode_text(body.semantic.text)
-                await cache_embedding(
-                    redis_client, body.semantic.text, body.semantic.level.value, embedding
-                )
+        # Handle semantic embeddings (single or list)
+        sem_list = body.semantic if isinstance(body.semantic, list) else ([body.semantic] if body.semantic else None)
+        embeddings = await _resolve_embeddings(sem_list)
 
         es = await get_es_client()
         settings = get_settings()
         engine = SearchEngine(es, settings.es_index)
-        return await engine.search(body, embedding)
+        return await engine.search(body, embeddings=embeddings)
+
+    @app.post(
+        "/graph",
+        response_model=GraphResponse,
+        dependencies=[Depends(verify_api_key)],
+    )
+    @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
+    async def graph(request: Request, body: GraphSearchRequest):
+        # Validate any search filters present
+        sr = body.to_search_request()
+        validate_search_request(sr)
+
+        # Handle semantic embeddings (single or list)
+        sem_list = body.semantic if isinstance(body.semantic, list) else ([body.semantic] if body.semantic else None)
+        embeddings = await _resolve_embeddings(sem_list)
+
+        es = await get_es_client()
+        settings_obj = get_settings()
+        engine = GraphEngine(es, settings_obj.es_index)
+        return await engine.execute(body.graph, sr, embeddings=embeddings)
 
     @app.get(
         "/stats",
@@ -161,6 +269,9 @@ def create_app() -> FastAPI:
     )
     @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
     async def get_paper(request: Request, arxiv_id: str):
+        # Validate arxiv_id format to prevent path traversal / abuse
+        if not re.match(r'^(\d{4}\.\d{4,5}(v\d+)?|[a-z-]+/\d{7}(v\d+)?)$', arxiv_id):
+            raise HTTPException(status_code=400, detail="Invalid ArXiv ID format")
         es = await get_es_client()
         settings_obj = get_settings()
         engine = SearchEngine(es, settings_obj.es_index)

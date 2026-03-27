@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # Redis
     redis_host: str = "redis"
     redis_port: int = 6379
+    redis_password: str = ""
 
     # API
     api_host: str = "0.0.0.0"
@@ -26,6 +27,7 @@ class Settings(BaseSettings):
     api_keys: str = "changeme-key-1"
     rate_limit_per_minute: int = 120
     rate_limit_burst: int = 20
+    ddos_rate_limit: str = "600/minute"
 
     # Ingestion
     arxiv_oai_base_url: str = "https://oaipmh.arxiv.org/oai"

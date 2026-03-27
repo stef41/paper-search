@@ -11,6 +11,8 @@ from src.core.models import (
     SearchHit,
     SearchRequest,
     SearchResponse,
+    SemanticMode,
+    SemanticQuery,
     SimilarityLevel,
     SortField,
     StatsResponse,
@@ -22,17 +24,43 @@ logger = structlog.get_logger()
 class QueryBuilder:
     """Builds Elasticsearch queries from SearchRequest."""
 
-    def __init__(self, request: SearchRequest, embedding: list[float] | None = None):
+    def __init__(
+        self,
+        request: SearchRequest,
+        embedding: list[float] | None = None,
+        embeddings: list[tuple[SemanticQuery, list[float]]] | None = None,
+    ):
         self.req = request
-        self.embedding = embedding
+        # Support both old single-embedding API and new multi-embedding API
+        if embeddings is not None:
+            self._embeddings = embeddings
+        elif embedding is not None and request.semantic:
+            sem_list = request.semantic if isinstance(request.semantic, list) else [request.semantic]
+            self._embeddings = [(sem_list[0], embedding)]
+        else:
+            self._embeddings = []
 
     def build(self) -> dict[str, Any]:
         body: dict[str, Any] = {}
         query = self._build_query()
+
+        # Wrap query in function_score if there are exclude semantics
+        # (applies continuous cosine-similarity penalty in scoring phase)
+        exclude_functions = self._build_exclude_functions()
+        if exclude_functions and query:
+            query = {
+                "function_score": {
+                    "query": query,
+                    "functions": exclude_functions,
+                    "score_mode": "multiply",
+                    "boost_mode": "multiply",
+                }
+            }
+
         if query:
             body["query"] = query
 
-        # KNN for semantic search
+        # KNN for semantic search (boost mode)
         knn = self._build_knn()
         if knn:
             body["knn"] = knn
@@ -58,6 +86,9 @@ class QueryBuilder:
         should: list[dict] = []
         filter_clauses: list[dict] = []
         must_not: list[dict] = []
+        # Store filter state for KNN reuse
+        self._filter_clauses = filter_clauses
+        self._must_not = must_not
 
         # Full-text queries
         if self.req.query:
@@ -268,23 +299,85 @@ class QueryBuilder:
 
         return {"bool": bool_query}
 
-    def _build_knn(self) -> dict[str, Any] | None:
-        if not self.req.semantic or not self.embedding:
+    def _build_knn(self) -> dict[str, Any] | list[dict[str, Any]] | None:
+        boost_entries = [
+            (sq, emb) for sq, emb in self._embeddings
+            if sq.mode == SemanticMode.BOOST
+        ]
+        if not boost_entries:
             return None
 
         field_map = {
             SimilarityLevel.TITLE: "title_embedding",
             SimilarityLevel.ABSTRACT: "abstract_embedding",
         }
-        field = field_map.get(self.req.semantic.level, "abstract_embedding")
 
-        return {
-            "field": field,
-            "query_vector": self.embedding,
-            "k": min(self.req.limit, 100),
-            "num_candidates": min(self.req.limit * 10, 1000),
-            "boost": self.req.semantic.weight,
+        # Build filter clause shared across all KNN entries
+        knn_filter_parts: list[dict] = []
+        if hasattr(self, "_filter_clauses") and self._filter_clauses:
+            knn_filter_parts.extend(self._filter_clauses)
+        if hasattr(self, "_must_not") and self._must_not:
+            knn_filter_parts.append({"bool": {"must_not": self._must_not}})
+        knn_filter = (
+            {"bool": {"filter": knn_filter_parts}} if len(knn_filter_parts) > 1
+            else knn_filter_parts[0] if knn_filter_parts else None
+        )
+
+        knns: list[dict[str, Any]] = []
+        for sq, emb in boost_entries:
+            field = field_map.get(sq.level, "abstract_embedding")
+            knn: dict[str, Any] = {
+                "field": field,
+                "query_vector": emb,
+                "k": min(self.req.limit, 100),
+                "num_candidates": min(self.req.limit * 10, 1000),
+                "boost": sq.weight,
+            }
+            if knn_filter:
+                knn["filter"] = knn_filter
+            knns.append(knn)
+
+        return knns[0] if len(knns) == 1 else knns
+
+    def _build_exclude_functions(self) -> list[dict[str, Any]] | None:
+        """Build function_score functions for exclude-mode semantics.
+
+        Uses script_score with negative cosineSimilarity so that papers
+        similar to the excluded text get a continuous penalty proportional
+        to their similarity — no hard cutoff.
+        """
+        exclude_entries = [
+            (sq, emb) for sq, emb in self._embeddings
+            if sq.mode == SemanticMode.EXCLUDE
+        ]
+        if not exclude_entries:
+            return None
+
+        field_map = {
+            SimilarityLevel.TITLE: "title_embedding",
+            SimilarityLevel.ABSTRACT: "abstract_embedding",
         }
+
+        functions: list[dict[str, Any]] = []
+        for sq, emb in exclude_entries:
+            field = field_map.get(sq.level, "abstract_embedding")
+            # cosineSimilarity returns [-1, 1], so (1 + cos) is [0, 2].
+            # High similarity → large denominator → score near 0 (penalised).
+            # Low similarity  → denominator ≈ 1 → score near 1 (untouched).
+            functions.append({
+                "script_score": {
+                    "script": {
+                        "source": f"1.0 / (1.0 + params.w * (1.0 + cosineSimilarity(params.v, '{field}')))",
+                        "params": {
+                            "v": emb,
+                            "w": sq.weight,
+                        },
+                    },
+                },
+                "filter": {"exists": {"field": field}},
+            })
+
+        return functions
 
     def _build_sort(self) -> list[dict[str, Any] | str]:
         sort_map = {
@@ -316,8 +409,9 @@ class SearchEngine:
         self,
         request: SearchRequest,
         embedding: list[float] | None = None,
+        embeddings: list[tuple[SemanticQuery, list[float]]] | None = None,
     ) -> SearchResponse:
-        builder = QueryBuilder(request, embedding)
+        builder = QueryBuilder(request, embedding=embedding, embeddings=embeddings)
         body = builder.build()
 
         logger.debug("search_query", body=body)
@@ -326,7 +420,9 @@ class SearchEngine:
         result = await self.client.search(
             index=self.index,
             body=body,
-            request_timeout=30,
+            request_timeout=10,
+            track_total_hits=True,
+            timeout="5s",
         )
         took_ms = int((time.monotonic() - start) * 1000)
 
@@ -338,11 +434,10 @@ class SearchEngine:
             if "highlight" in hit:
                 highlights = hit["highlight"]
 
-            # Remove embeddings from response unless requested
-            if not request.include_embeddings:
-                source.pop("title_embedding", None)
-                source.pop("abstract_embedding", None)
-                source.pop("paragraph_embeddings", None)
+            # Always strip embeddings from responses (prevent model extraction)
+            source.pop("title_embedding", None)
+            source.pop("abstract_embedding", None)
+            source.pop("paragraph_embeddings", None)
 
             hits.append(SearchHit(
                 score=hit.get("_score"),

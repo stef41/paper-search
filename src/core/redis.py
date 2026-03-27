@@ -14,13 +14,16 @@ async def get_redis_client() -> redis.Redis:
     global _pool
     if _pool is None:
         settings = get_settings()
-        _pool = redis.Redis(
+        kwargs: dict = dict(
             host=settings.redis_host,
             port=settings.redis_port,
             decode_responses=True,
             socket_connect_timeout=5,
             socket_timeout=5,
         )
+        if settings.redis_password:
+            kwargs["password"] = settings.redis_password
+        _pool = redis.Redis(**kwargs)
     return _pool
 
 

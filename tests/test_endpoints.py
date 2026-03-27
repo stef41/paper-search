@@ -18,21 +18,23 @@ class TestHealthEndpoint:
         resp = client.get("/health")
         data = resp.json()
         assert "status" in data
-        assert "elasticsearch" in data
-        assert "redis" in data
-        assert "total_papers" in data
+        # Hardened: only exposes aggregate status, not component details
+        assert data["status"] in ("healthy", "degraded")
 
     @pytest.mark.integration
-    def test_health_shows_paper_count(self, client):
+    def test_health_no_info_leak(self, client):
         resp = client.get("/health")
         data = resp.json()
-        assert data["total_papers"] >= 6
+        # Security: health must NOT leak internal component details
+        assert "elasticsearch" not in data
+        assert "redis" not in data
+        assert "total_papers" not in data
 
     @pytest.mark.integration
-    def test_health_es_status(self, client):
+    def test_health_healthy_status(self, client):
         resp = client.get("/health")
         data = resp.json()
-        assert data["elasticsearch"] in ("green", "yellow")
+        assert data["status"] == "healthy"
 
 
 class TestStatsEndpoint:

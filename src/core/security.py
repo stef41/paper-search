@@ -51,9 +51,8 @@ def validate_regex_pattern(pattern: str, max_length: int = 200) -> str:
 
     # Block known ReDoS patterns
     redos_patterns = [
-        r"\([\.\+\*][+*]\)\+",
-        r"\([\.\+\*][+*]\)\*",
-        r"\([^)]*\|[^)]*\)\+",
+        r"\([^)]*[+*][^)]*\)[+*]",
+        r"\([^)]*\|[^)]*\)[+*]",
     ]
     for rdos in redos_patterns:
         if re.search(rdos, pattern):

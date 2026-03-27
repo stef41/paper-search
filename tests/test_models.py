@@ -105,8 +105,11 @@ class TestSearchRequestValidation:
                 weight=2.0,
             )
         )
-        assert req.semantic.level == SimilarityLevel.TITLE
-        assert req.semantic.weight == 2.0
+        # semantic is normalized to a list
+        assert isinstance(req.semantic, list)
+        assert len(req.semantic) == 1
+        assert req.semantic[0].level == SimilarityLevel.TITLE
+        assert req.semantic[0].weight == 2.0
 
     @pytest.mark.unit
     def test_date_range(self):

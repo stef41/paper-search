@@ -168,6 +168,11 @@ def get_index_mapping(embedding_dim: int) -> dict:
                         "top_referenced_categories": {"type": "keyword"},
                     },
                 },
+                # Citation links (arxiv IDs of papers)
+                "reference_ids": {"type": "keyword"},
+                "cited_by_ids": {"type": "keyword"},
+                "enrichment_source": {"type": "keyword"},
+                "enriched_at": {"type": "date"},
             }
         },
     }
