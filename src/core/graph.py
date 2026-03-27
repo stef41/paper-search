@@ -420,19 +420,7 @@ class GraphEngine:
             src = hit["_source"]
             cats = src.get("categories", [])
             cat_set.update(cats)
-            nodes.append(GraphNode(
-                id=src["arxiv_id"],
-                label=src.get("title", src["arxiv_id"]),
-                type="paper",
-                properties={
-                    "categories": cats,
-                    "primary_category": src.get("primary_category"),
-                    "category_count": len(cats),
-                    "submitted_date": src.get("submitted_date"),
-                    "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-                    "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                },
-            ))
+            nodes.append(self._make_paper_node(src, {"category_count": len(cats)}))
             # Add edges from paper → each category
             for cat in cats:
                 edges.append(GraphEdge(source=src["arxiv_id"], target=cat, relation="in_category"))
@@ -847,20 +835,7 @@ class GraphEngine:
         for src, score, cat_count in scored_papers:
             cats = src.get("categories", [])
             cat_set.update(cats)
-            nodes.append(GraphNode(
-                id=src["arxiv_id"],
-                label=src.get("title", src["arxiv_id"]),
-                type="paper",
-                properties={
-                    "categories": cats,
-                    "primary_category": src.get("primary_category"),
-                    "category_count": cat_count,
-                    "interdisciplinary_score": round(score, 4),
-                    "submitted_date": src.get("submitted_date"),
-                    "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-                    "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                },
-            ))
+            nodes.append(self._make_paper_node(src, {"category_count": cat_count, "interdisciplinary_score": round(score, 4)}))
             for cat in cats:
                 edges.append(GraphEdge(
                     source=src["arxiv_id"], target=cat, relation="in_category",
@@ -1013,20 +988,7 @@ class GraphEngine:
             cat_set.update(own_cats)
             cat_set.update(citing_cats)
 
-            nodes.append(GraphNode(
-                id=src["arxiv_id"],
-                label=src.get("title", src["arxiv_id"]),
-                type="paper",
-                properties={
-                    "categories": own_cats,
-                    "primary_category": src.get("primary_category"),
-                    "total_citations": cites,
-                    "citing_category_count": citing_cat_count,
-                    "top_citing_categories": citing_cats,
-                    "submitted_date": src.get("submitted_date"),
-                    "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                },
-            ))
+            nodes.append(self._make_paper_node(src, {"total_citations": cites, "citing_category_count": citing_cat_count, "top_citing_categories": citing_cats}))
             # Edges: paper → its own categories
             for cat in own_cats:
                 edges.append(GraphEdge(
@@ -1150,16 +1112,10 @@ class GraphEngine:
 
         # Add seed papers as nodes
         for sp in seed_papers[:500]:
-            nodes.append(GraphNode(
-                id=sp["arxiv_id"],
-                label=sp.get("title", sp["arxiv_id"]),
-                type="paper",
-                properties={
-                    "role": "seed",
-                    "categories": sp.get("categories", []),
-                    f"{field}_count": len(sp.get(field, [])),
-                },
-            ))
+            nodes.append(self._make_paper_node(sp, {
+                "role": "seed",
+                f"{field}_count": len(sp.get(field, [])),
+            }))
 
         relation = "cites" if direction == "references" else "cited_by"
 
@@ -1314,24 +1270,11 @@ class GraphEngine:
         edges: list[GraphEdge] = []
         seen: set[str] = set()
 
-        def _paper_props(src: dict, role: str) -> dict:
-            return {
-                "role": role,
-                "categories": src.get("categories", []),
-                "primary_category": src.get("primary_category"),
-                "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-                "submitted_date": src.get("submitted_date"),
-                "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-            }
-
         for sp in seed_papers:
             aid = sp["arxiv_id"]
             if aid not in seen:
                 seen.add(aid)
-                nodes.append(GraphNode(
-                    id=aid, label=sp.get("title", aid), type="paper",
-                    properties=_paper_props(sp, "seed"),
-                ))
+                nodes.append(self._make_paper_node(sp, {"role": "seed"}))
 
         edge_count = 0
         for sp in seed_papers:
@@ -1340,10 +1283,7 @@ class GraphEngine:
                     lp = linked_map[ref_id]
                     if ref_id not in seen:
                         seen.add(ref_id)
-                        nodes.append(GraphNode(
-                            id=ref_id, label=lp.get("title", ref_id), type="paper",
-                            properties=_paper_props(lp, "linked"),
-                        ))
+                        nodes.append(self._make_paper_node(lp, {"role": "linked"}))
                     src_id = sp["arxiv_id"] if direction == "references" else ref_id
                     tgt_id = ref_id if direction == "references" else sp["arxiv_id"]
                     edges.append(GraphEdge(source=src_id, target=tgt_id, relation="cites"))
@@ -1578,18 +1518,7 @@ class GraphEngine:
 
         nodes: list[GraphNode] = []
         for src, _ in papers:
-            nodes.append(GraphNode(
-                id=src["arxiv_id"],
-                label=src.get("title", src["arxiv_id"]),
-                type="paper",
-                properties={
-                    "categories": src.get("categories", []),
-                    "primary_category": src.get("primary_category"),
-                    "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-                    "submitted_date": src.get("submitted_date"),
-                    "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                },
-            ))
+            nodes.append(self._make_paper_node(src))
 
         # Compute pairwise cosine similarity
         vecs = np.array([v for _, v in papers])
@@ -1933,19 +1862,7 @@ class GraphEngine:
 
         nodes: list[GraphNode] = []
         for src, refs in papers:
-            nodes.append(GraphNode(
-                id=src["arxiv_id"],
-                label=src.get("title", src["arxiv_id"]),
-                type="paper",
-                properties={
-                    "categories": src.get("categories", []),
-                    "primary_category": src.get("primary_category"),
-                    "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-                    "submitted_date": src.get("submitted_date"),
-                    "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                    "reference_count": len(refs),
-                },
-            ))
+            nodes.append(self._make_paper_node(src, {"reference_count": len(refs)}))
 
         edges: list[GraphEdge] = []
         for i in range(len(papers)):
@@ -2016,18 +1933,7 @@ class GraphEngine:
 
         nodes: list[GraphNode] = []
         for src, citers in papers:
-            nodes.append(GraphNode(
-                id=src["arxiv_id"],
-                label=src.get("title", src["arxiv_id"]),
-                type="paper",
-                properties={
-                    "categories": src.get("categories", []),
-                    "primary_category": src.get("primary_category"),
-                    "citations": len(citers),
-                    "submitted_date": src.get("submitted_date"),
-                    "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                },
-            ))
+            nodes.append(self._make_paper_node(src))
 
         edges: list[GraphEdge] = []
         for i in range(len(papers)):
@@ -2100,17 +2006,7 @@ class GraphEngine:
             if aid in seen:
                 return
             seen[aid] = hop
-            nodes.append(GraphNode(
-                id=aid, label=src.get("title", aid), type="paper",
-                properties={
-                    "hop": hop,
-                    "categories": src.get("categories", []),
-                    "primary_category": src.get("primary_category"),
-                    "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-                    "submitted_date": src.get("submitted_date"),
-                    "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                },
-            ))
+            nodes.append(self._make_paper_node(src, {"hop": hop}))
 
         # Seed papers = hop 0
         current_frontier: dict[str, dict] = {}
@@ -2311,19 +2207,7 @@ class GraphEngine:
         edges: list[GraphEdge] = []
         for i, pid in enumerate(path):
             src = paper_cache.get(pid, {"arxiv_id": pid})
-            nodes.append(GraphNode(
-                id=pid,
-                label=src.get("title", pid),
-                type="paper",
-                properties={
-                    "path_position": i,
-                    "categories": src.get("categories", []),
-                    "primary_category": src.get("primary_category"),
-                    "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-                    "submitted_date": src.get("submitted_date"),
-                    "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                },
-            ))
+            nodes.append(self._make_paper_node(src, {"path_position": i}))
             if i > 0:
                 edges.append(GraphEdge(
                     source=path[i - 1], target=pid, relation="path_link",
@@ -2357,96 +2241,36 @@ class GraphEngine:
         damping = gq.damping_factor
         max_iter = gq.iterations
 
-        # Step 1: Gather a citation subgraph
-        if gq.seed_arxiv_id:
-            seed_query: dict[str, Any] = {"term": {"arxiv_id": gq.seed_arxiv_id}}
-        elif gq.seed_arxiv_ids:
-            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:10000]}}
-        else:
-            base = self._base_query(sr, emb)
-            seed_query = {
-                "bool": {"must": [base], "filter": [{"exists": {"field": "cited_by_ids"}}]}
-            }
+        paper_data, out_edges, in_edges, undirected = await self._build_citation_subgraph(
+            gq, sr, emb, size_multiplier=4)
 
-        # Fetch seed papers with their citation links
-        seed_resp = await self._do_search({
-            "query": seed_query,
-            "size": min(limit * 2, 10000),
-            "_source": ["arxiv_id", "title", "categories", "primary_category",
-                         "authors", "submitted_date", "citation_stats",
-                         "reference_ids", "cited_by_ids"],
-        }, sr, emb)
-
-        if not seed_resp["hits"]["hits"]:
-            return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
-                                 metadata={"error": "no_seed_papers"})
-
-        paper_data: dict[str, dict] = {}
-        all_linked: set[str] = set()
-        for hit in seed_resp["hits"]["hits"]:
-            src = hit["_source"]
-            paper_data[src["arxiv_id"]] = src
-            for rid in (src.get("reference_ids", []) or []):
-                all_linked.add(rid)
-            for cid in (src.get("cited_by_ids", []) or []):
-                all_linked.add(cid)
-
-        # Fetch 1-hop neighborhood
-        missing = list(all_linked - set(paper_data.keys()))[:10000]
-        if missing:
-            hop_resp = await self._do_search({
-                "query": {"terms": {"arxiv_id": missing}},
-                "size": min(len(missing), 10000),
-                "_source": ["arxiv_id", "title", "categories", "primary_category",
-                             "authors", "submitted_date", "citation_stats",
-                             "reference_ids", "cited_by_ids"],
-            })
-            for hit in hop_resp["hits"]["hits"]:
-                src = hit["_source"]
-                paper_data[src["arxiv_id"]] = src
-
-        # Build adjacency: who cites whom
-        # graph[a] = set of papers that a CITES (a → b means a references b)
-        graph_out: dict[str, set[str]] = defaultdict(set)
-        graph_in: dict[str, set[str]] = defaultdict(set)
-        all_nodes_in_graph = set(paper_data.keys())
-
-        for aid, src in paper_data.items():
-            for rid in (src.get("reference_ids", []) or []):
-                if rid in all_nodes_in_graph:
-                    graph_out[aid].add(rid)
-                    graph_in[rid].add(aid)
-            for cid in (src.get("cited_by_ids", []) or []):
-                if cid in all_nodes_in_graph:
-                    graph_out[cid].add(aid)
-                    graph_in[aid].add(cid)
-
-        if not graph_out:
+        if not out_edges:
             return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
                                  metadata={"error": "no_citation_links_in_subgraph",
                                             "papers_in_subgraph": len(paper_data)})
 
-        # Step 2: Run PageRank
-        N = len(all_nodes_in_graph)
-        ranks: dict[str, float] = {a: 1.0 / N for a in all_nodes_in_graph}
+        # Run PageRank
+        all_nodes = set(paper_data.keys())
+        N = len(all_nodes)
+        ranks: dict[str, float] = {a: 1.0 / N for a in all_nodes}
 
         converged_at = max_iter
         for it in range(max_iter):
             new_ranks: dict[str, float] = {}
-            for node in all_nodes_in_graph:
+            for node in all_nodes:
                 rank_sum = 0.0
-                for in_node in graph_in.get(node, set()):
-                    out_degree = len(graph_out.get(in_node, set()))
+                for in_node in in_edges.get(node, set()):
+                    out_degree = len(out_edges.get(in_node, set()))
                     if out_degree > 0:
                         rank_sum += ranks[in_node] / out_degree
                 new_ranks[node] = (1.0 - damping) / N + damping * rank_sum
-            max_delta = max(abs(new_ranks[n] - ranks[n]) for n in all_nodes_in_graph)
+            max_delta = max(abs(new_ranks[n] - ranks[n]) for n in all_nodes)
             ranks = new_ranks
             if max_delta < 1e-6:
                 converged_at = it + 1
                 break
 
-        # Step 3: Return top-ranked papers
+        # Return top-ranked papers
         sorted_ranks = sorted(ranks.items(), key=lambda x: -x[1])[:limit]
 
         nodes: list[GraphNode] = []
@@ -2454,24 +2278,15 @@ class GraphEngine:
 
         for aid, rank in sorted_ranks:
             src = paper_data.get(aid, {"arxiv_id": aid})
-            nodes.append(GraphNode(
-                id=aid, label=src.get("title", aid), type="paper",
-                properties={
-                    "pagerank": round(rank, 8),
-                    "in_degree": len(graph_in.get(aid, set())),
-                    "out_degree": len(graph_out.get(aid, set())),
-                    "categories": src.get("categories", []),
-                    "primary_category": src.get("primary_category"),
-                    "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-                    "submitted_date": src.get("submitted_date"),
-                    "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                },
-            ))
+            nodes.append(self._make_paper_node(src, {
+                "pagerank": round(rank, 8),
+                "in_degree": len(in_edges.get(aid, set())),
+                "out_degree": len(out_edges.get(aid, set())),
+            }))
 
-        # Add top citation edges between ranked papers
         ranked_set = {aid for aid, _ in sorted_ranks}
         for aid, _ in sorted_ranks:
-            for target in graph_out.get(aid, set()):
+            for target in out_edges.get(aid, set()):
                 if target in ranked_set:
                     edges_out.append(GraphEdge(
                         source=aid, target=target, relation="cites",
@@ -2486,7 +2301,7 @@ class GraphEngine:
                 "iterations": converged_at,
                 "converged": converged_at < max_iter,
                 "papers_in_subgraph": N,
-                "edges_in_subgraph": sum(len(v) for v in graph_out.values()),
+                "edges_in_subgraph": sum(len(v) for v in out_edges.values()),
                 "max_pagerank": round(sorted_ranks[0][1], 8) if sorted_ranks else 0,
             },
         )
@@ -2508,51 +2323,20 @@ class GraphEngine:
         limit = min(gq.limit or 50, self.MAX_RESULTS)
         max_iter = min(gq.iterations, 500)
 
-        # Step 1: build subgraph from search results
-        base = self._base_query(sr, emb)
-        combined = {
-            "bool": {
-                "must": [base],
-                "filter": [
-                    {"bool": {"should": [
-                        {"exists": {"field": "reference_ids"}},
-                        {"exists": {"field": "cited_by_ids"}},
-                    ]}}
-                ],
-            }
-        }
-
-        resp = await self._do_search({
-            "query": combined,
-            "size": min(limit * 4, 10000),
-            "_source": ["arxiv_id", "title", "categories", "primary_category",
-                         "authors", "submitted_date", "citation_stats",
-                         "reference_ids", "cited_by_ids"],
-        }, sr, emb)
-
-        paper_data: dict[str, dict] = {}
-        for hit in resp["hits"]["hits"]:
-            s = hit["_source"]
-            paper_data[s["arxiv_id"]] = s
+        paper_data, out_edges, in_edges, undirected = await self._build_citation_subgraph(
+            gq, sr, emb, size_multiplier=4)
 
         if len(paper_data) < 2:
             return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
                                  metadata={"error": "need at least 2 papers with citation links"})
 
-        # Build undirected adjacency
+        # Merge undirected citation edges with co-authorship edges
         adj: dict[str, set[str]] = defaultdict(set)
-        node_ids = set(paper_data.keys())
-        for aid, src in paper_data.items():
-            for rid in (src.get("reference_ids", []) or []):
-                if rid in node_ids:
-                    adj[aid].add(rid)
-                    adj[rid].add(aid)
-            for cid in (src.get("cited_by_ids", []) or []):
-                if cid in node_ids:
-                    adj[aid].add(cid)
-                    adj[cid].add(aid)
+        for aid, nbrs in undirected.items():
+            adj[aid] |= nbrs
 
         # Also co-authorship edges (papers sharing authors)
+        node_ids = set(paper_data.keys())
         author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
             for a in src.get("authors", [])[:50]:
@@ -2566,7 +2350,7 @@ class GraphEngine:
                         adj[papers[i]].add(papers[j])
                         adj[papers[j]].add(papers[i])
 
-        # Step 2: Label Propagation
+        # Label Propagation
         labels: dict[str, str] = {aid: aid for aid in node_ids}
         node_list = list(node_ids)
 
@@ -2622,17 +2406,7 @@ class GraphEngine:
             # Add member papers (capped per community)
             for mid in members[:100]:
                 src = paper_data.get(mid, {"arxiv_id": mid})
-                nodes.append(GraphNode(
-                    id=mid, label=src.get("title", mid), type="paper",
-                    properties={
-                        "community": comm_idx,
-                        "categories": src.get("categories", []),
-                        "primary_category": src.get("primary_category"),
-                        "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-                        "submitted_date": src.get("submitted_date"),
-                        "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                    },
-                ))
+                nodes.append(self._make_paper_node(src, {"community": comm_idx}))
                 edges_out.append(GraphEdge(
                     source=comm_id, target=mid, relation="contains",
                 ))
@@ -2661,11 +2435,11 @@ class GraphEngine:
             nodes=nodes, edges=edges_out,
             total=len(paper_data), took_ms=0,
             metadata={
-                "papers_in_graph": len(paper_data),
-                "edges_in_graph": sum(len(v) for v in adj.values()) // 2,
+                "papers_in_subgraph": len(paper_data),
+                "edges_in_subgraph": sum(len(v) for v in adj.values()) // 2,
                 "communities_found": len(sorted_comms),
                 "largest_community": len(sorted_comms[0][1]) if sorted_comms else 0,
-                "iterations_converged": max_iter,
+                "iterations": max_iter,
             },
         )
 
@@ -2687,40 +2461,12 @@ class GraphEngine:
         limit = min(gq.limit or 50, self.MAX_RESULTS)
         pattern = gq.pattern
 
-        # Build a subgraph from search results
-        base = self._base_query(sr, emb)
-        combined = {
-            "bool": {
-                "must": [base],
-                "filter": [
-                    {"bool": {"should": [
-                        {"exists": {"field": "reference_ids"}},
-                        {"exists": {"field": "cited_by_ids"}},
-                    ]}}
-                ],
-            }
-        }
-
-        resp = await self._do_search({
-            "query": combined,
-            "size": min(limit * 10, 10000),
-            "_source": ["arxiv_id", "title", "categories", "primary_category",
-                         "authors", "submitted_date", "citation_stats",
-                         "reference_ids", "cited_by_ids"],
-        }, sr, emb)
-
-        paper_data: dict[str, dict] = {}
-        for hit in resp["hits"]["hits"]:
-            s = hit["_source"]
-            paper_data[s["arxiv_id"]] = s
+        paper_data, out_edges, in_edges, undirected = await self._build_citation_subgraph(
+            gq, sr, emb, size_multiplier=10)
 
         node_ids = set(paper_data.keys())
-        # Build directed adjacency within the subgraph
-        cites: dict[str, set[str]] = defaultdict(set)
-        for aid, src in paper_data.items():
-            for rid in (src.get("reference_ids", []) or []):
-                if rid in node_ids:
-                    cites[aid].add(rid)
+        # Use directed edges for pattern matching
+        cites = out_edges
 
         nodes: list[GraphNode] = []
         edges_out: list[GraphEdge] = []
@@ -2731,16 +2477,7 @@ class GraphEngine:
                 return
             seen_papers.add(aid)
             src = paper_data.get(aid, {"arxiv_id": aid})
-            nodes.append(GraphNode(
-                id=aid, label=src.get("title", aid), type="paper",
-                properties={
-                    "categories": src.get("categories", []),
-                    "primary_category": src.get("primary_category"),
-                    "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-                    "submitted_date": src.get("submitted_date"),
-                    "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                },
-            ))
+            nodes.append(self._make_paper_node(src))
 
         found_patterns = 0
 
@@ -2960,17 +2697,7 @@ class GraphEngine:
 
             for mid in members[:100]:
                 src = paper_data.get(mid, {"arxiv_id": mid})
-                nodes.append(GraphNode(
-                    id=mid, label=src.get("title", mid), type="paper",
-                    properties={
-                        "component": comp_idx,
-                        "categories": src.get("categories", []),
-                        "primary_category": src.get("primary_category"),
-                        "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-                        "submitted_date": src.get("submitted_date"),
-                        "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
-                    },
-                ))
+                nodes.append(self._make_paper_node(src, {"component": comp_idx}))
                 edges_out.append(GraphEdge(
                     source=comp_id, target=mid, relation="contains",
                 ))
@@ -2979,8 +2706,8 @@ class GraphEngine:
             nodes=nodes, edges=edges_out,
             total=len(paper_data), took_ms=0,
             metadata={
-                "papers_in_graph": len(paper_data),
-                "edges_in_graph": sum(len(v) for v in adj.values()) // 2,
+                "papers_in_subgraph": len(paper_data),
+                "edges_in_subgraph": sum(len(v) for v in adj.values()) // 2,
                 "components_found": len(components),
                 "largest_component": len(components[0]) if components else 0,
                 "isolated_papers": sum(1 for c in components if len(c) == 1),
@@ -3589,7 +3316,7 @@ class GraphEngine:
             nodes=nodes, edges=edges_out,
             total=len(paper_data), took_ms=0,
             metadata={
-                "papers_in_graph": len(paper_data),
+                "papers_in_subgraph": len(paper_data),
                 "directed_edges": sum(len(v) for v in out_edges.values()),
                 "sccs_found": len(sccs),
                 "nontrivial_sccs": nontrivial,
@@ -3686,7 +3413,7 @@ class GraphEngine:
             nodes=nodes, edges=edges_out,
             total=N, took_ms=0,
             metadata={
-                "papers_in_graph": N,
+                "papers_in_subgraph": N,
                 "papers_in_order": len(topo_order),
                 "cycles_broken": N - len([n for n in node_list if n in set(topo_order[:N]) and in_deg.get(n, 0) == 0 or n in topo_order]),
                 "max_depth": max_depth,
@@ -3993,7 +3720,7 @@ class GraphEngine:
             nodes=nodes, edges=edges_out,
             total=len(paper_data), took_ms=0,
             metadata={
-                "papers_in_graph": len(paper_data),
+                "papers_in_subgraph": len(paper_data),
                 "communities_found": len(communities),
                 "modularity": round(modularity, 6),
                 "largest_community": len(sorted_comms[0][1]) if sorted_comms else 0,
@@ -5586,7 +5313,7 @@ class GraphEngine:
             nodes=nodes, edges=edges_out,
             total=len(paper_data), took_ms=0,
             metadata={
-                "papers_in_graph": len(paper_data),
+                "papers_in_subgraph": len(paper_data),
                 "communities_found": len(communities_final),
                 "modularity": round(modularity, 6),
                 "largest_community": len(sorted_comms[0][1]) if sorted_comms else 0,
@@ -6712,7 +6439,7 @@ class GraphEngine:
                 "matches_capped": len(matches) >= MAX_MATCHES,
                 "pattern_nodes": len(p_nodes),
                 "pattern_edges": len(p_edges),
-                "papers_searched": len(paper_cache),
+                "papers_in_subgraph": len(paper_cache),
                 "unique_result_nodes": len(seen_nodes),
                 "where_conditions": len(where_conditions) if has_where else 0,
                 "optional_edges": sum(1 for e in p_edges if e.optional) if has_optional else 0,
