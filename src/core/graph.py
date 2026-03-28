@@ -1511,7 +1511,7 @@ class GraphEngine:
             if direction == "references":
                 edges.append(GraphEdge(source=seed, target=name, relation=relation, weight=bucket["doc_count"]))
             else:
-                edges.append(GraphEdge(source=seed, target=name, relation=relation, weight=bucket["doc_count"]))
+                edges.append(GraphEdge(source=name, target=seed, relation=relation, weight=bucket["doc_count"]))
 
         return GraphResponse(
             nodes=nodes, edges=edges,
