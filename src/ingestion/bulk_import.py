@@ -370,13 +370,19 @@ def main():
         print("Download from: https://www.kaggle.com/datasets/Cornell-University/arxiv")
         return
 
-    asyncio.run(run_bulk_import(
-        filepath=args.file,
-        filter_categories=args.categories,
-        max_papers=args.max_papers,
-        skip_embeddings=args.skip_embeddings,
-        batch_size=args.batch_size,
-    ))
+    async def _run():
+        try:
+            await run_bulk_import(
+                filepath=args.file,
+                filter_categories=args.categories,
+                max_papers=args.max_papers,
+                skip_embeddings=args.skip_embeddings,
+                batch_size=args.batch_size,
+            )
+        finally:
+            await close_es_client()
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

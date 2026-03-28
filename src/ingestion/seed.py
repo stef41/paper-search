@@ -373,11 +373,17 @@ def main():
     )
     args = parser.parse_args()
 
-    asyncio.run(run_seed(
-        categories=args.categories,
-        max_papers_per_category=args.max_papers,
-        skip_embeddings=args.skip_embeddings,
-    ))
+    async def _run():
+        try:
+            await run_seed(
+                categories=args.categories,
+                max_papers_per_category=args.max_papers,
+                skip_embeddings=args.skip_embeddings,
+            )
+        finally:
+            await close_es_client()
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

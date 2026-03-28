@@ -118,6 +118,7 @@ def make_paper(
         "abstract_embedding": abstract_embedding,
         "citation_stats": citation_stats,
         "references_stats": references_stats,
+        "domains": list(set(c.split(".")[0] for c in categories)),
     }
 
 

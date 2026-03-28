@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 import structlog
@@ -92,7 +93,7 @@ async def _resolve_embeddings(
     for sq in sem_list:
         emb = await get_cached_embedding(redis_client, sq.text, sq.level.value)
         if emb is None:
-            emb = encode_text(sq.text)
+            emb = await asyncio.get_event_loop().run_in_executor(None, encode_text, sq.text)
             await cache_embedding(redis_client, sq.text, sq.level.value, emb)
         result.append((sq, emb))
     return result

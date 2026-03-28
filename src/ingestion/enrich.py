@@ -22,7 +22,7 @@ import structlog
 from elasticsearch import AsyncElasticsearch
 
 from src.core.config import get_settings
-from src.core.elasticsearch import get_es_client, ensure_index
+from src.core.elasticsearch import get_es_client, ensure_index, close_es_client
 
 logger = structlog.get_logger()
 
@@ -246,10 +246,16 @@ def main():
     parser.add_argument("--batch-size", type=int, default=50)
     args = parser.parse_args()
 
-    asyncio.run(enrich_papers(
-        max_papers=args.max_papers,
-        batch_size=args.batch_size,
-    ))
+    async def _run():
+        try:
+            await enrich_papers(
+                max_papers=args.max_papers,
+                batch_size=args.batch_size,
+            )
+        finally:
+            await close_es_client()
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":
