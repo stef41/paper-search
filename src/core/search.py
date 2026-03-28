@@ -138,17 +138,17 @@ class QueryBuilder:
 
         # Regex searches
         if self.req.title_regex:
-            must.append({"regexp": {"title.raw": {"value": self.req.title_regex, "flags": "ALL"}}})
+            must.append({"regexp": {"title.raw": {"value": self.req.title_regex, "flags": "NONE"}}})
 
         if self.req.abstract_regex:
-            must.append({"regexp": {"abstract.raw": {"value": self.req.abstract_regex, "flags": "ALL"}}})
+            must.append({"regexp": {"abstract.raw": {"value": self.req.abstract_regex, "flags": "NONE"}}})
 
         if self.req.author_regex:
             must.append({
                 "nested": {
                     "path": "authors",
                     "query": {
-                        "regexp": {"authors.name.raw": {"value": self.req.author_regex, "flags": "ALL"}}
+                        "regexp": {"authors.name.raw": {"value": self.req.author_regex, "flags": "NONE"}}
                     },
                 }
             })

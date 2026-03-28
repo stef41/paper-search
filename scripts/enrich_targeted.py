@@ -137,7 +137,7 @@ async def main():
                             cited_by_ids.append(aid)
 
                 doc_id = doc_ids[arxiv_id]
-                bulk_body.append(f'{{"update":{{"_id":"{doc_id}"}}}}')
+                bulk_body.append(json.dumps({"update": {"_id": doc_id}}))
                 update = {"doc": {
                     "citation_stats": {"total_citations": cites, "top_citing_categories": top_citing, "median_h_index_citing_authors": median_h},
                     "references_stats": {"total_references": len(refs)},

@@ -2368,6 +2368,8 @@ class GraphEngine:
 
         converged_at = max_iter
         for it in range(max_iter):
+            # Redistribute rank from dangling nodes (no outgoing edges)
+            dangling_sum = sum(ranks[n] for n in all_nodes if not out_edges.get(n))
             new_ranks: dict[str, float] = {}
             for node in all_nodes:
                 rank_sum = 0.0
@@ -2375,7 +2377,7 @@ class GraphEngine:
                     out_degree = len(out_edges.get(in_node, set()))
                     if out_degree > 0:
                         rank_sum += ranks[in_node] / out_degree
-                new_ranks[node] = (1.0 - damping) / N + damping * rank_sum
+                new_ranks[node] = (1.0 - damping) / N + damping * (rank_sum + dangling_sum / N)
             max_delta = max(abs(new_ranks[n] - ranks[n]) for n in all_nodes)
             ranks = new_ranks
             if max_delta < 1e-6:
@@ -3202,7 +3204,7 @@ class GraphEngine:
 
         # Normalize
         if N > 2:
-            scale = 1.0 / ((N - 1) * (N - 2))
+            scale = 1.0 / (2.0 * (N - 1) * (N - 2))  # undirected normalization
             if len(sample) < N:
                 scale *= N / len(sample)  # Approximate scaling
             for n in node_list:
@@ -4621,6 +4623,10 @@ class GraphEngine:
         N = len(node_list)
         idx = {aid: i for i, aid in enumerate(node_list)}
 
+        # Estimate max degree as proxy for spectral radius; cap alpha for convergence
+        max_degree = max((len(undirected.get(n, set())) for n in node_list), default=1) or 1
+        alpha = min(alpha, 0.9 / max_degree)
+
         katz = [1.0] * N
 
         converged_at = max_iter
@@ -4631,9 +4637,6 @@ class GraphEngine:
                     j = idx.get(nbr)
                     if j is not None:
                         new_katz[i] += alpha * katz[j]
-            # Normalize
-            norm = math.sqrt(sum(k * k for k in new_katz)) or 1.0
-            new_katz = [k / norm for k in new_katz]
             max_delta = max(abs(new_katz[i] - katz[i]) for i in range(N))
             katz = new_katz
             if max_delta < 1e-6:
@@ -5334,24 +5337,32 @@ class GraphEngine:
             for node in node_list:
                 old_comm = comm[node]
                 ki = strength[node]
-                comm_strength[old_comm] -= ki
 
                 nbr_comms: dict[int, float] = defaultdict(float)
                 for nbr, w in adj[node].items():
                     nbr_comms[comm[nbr]] += w
 
+                ki_old = nbr_comms.get(old_comm, 0.0)
+
+                # Remove node from its community for gain calculation
+                sigma_old = comm_strength[old_comm] - ki
+
                 best_comm = old_comm
                 best_gain = 0.0
                 for c, ki_in in nbr_comms.items():
+                    if c == old_comm:
+                        continue
                     sigma_tot = comm_strength.get(c, 0.0)
-                    gain = ki_in / m - (sigma_tot * ki) / (2.0 * m * m)
+                    # Standard modularity gain: gain_into_c - loss_from_old
+                    gain = (ki_in - ki_old) / m - ki * (sigma_tot - sigma_old) / (2.0 * m * m)
                     if gain > best_gain:
                         best_gain = gain
                         best_comm = c
 
-                comm[node] = best_comm
-                comm_strength[best_comm] += ki
                 if best_comm != old_comm:
+                    comm_strength[old_comm] -= ki
+                    comm[node] = best_comm
+                    comm_strength[best_comm] += ki
                     moved = True
 
             # Phase 2: Refinement — ensure each community is well-connected
