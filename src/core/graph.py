@@ -880,9 +880,13 @@ class GraphEngine:
         cat_doc_count: dict[str, int] = {}
         pair_freq: dict[tuple[str, str], float] = {}
 
+        # First pass: collect all category doc counts
+        for bucket in cooc_resp["aggregations"]["cats"]["buckets"]:
+            cat_doc_count[bucket["key"]] = bucket["doc_count"]
+
+        # Second pass: compute pair co-occurrence frequencies
         for bucket in cooc_resp["aggregations"]["cats"]["buckets"]:
             cat_a = bucket["key"]
-            cat_doc_count[cat_a] = bucket["doc_count"]
             for co_bucket in bucket["co_cats"]["buckets"]:
                 cat_b = co_bucket["key"]
                 if cat_a >= cat_b:
