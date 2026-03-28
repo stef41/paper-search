@@ -335,7 +335,7 @@ class GraphEngine:
         if "min_citations" in filters:
             cs = src.get("citation_stats") or {}
             tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
-            if tc < filters["min_citations"]:
+            if tc < int(filters["min_citations"]):
                 return False
         if "date_from" in filters:
             sd = src.get("submitted_date") or ""
@@ -4882,7 +4882,7 @@ class GraphEngine:
                         edges_out.append(GraphEdge(
                             source=path[i], target=path[i + 1],
                             relation="shortest_path",
-                            weight=path_idx,
+                            weight=path_idx + 1,
                         ))
 
         return GraphResponse(
@@ -5056,7 +5056,7 @@ class GraphEngine:
                     seen_edges.add(ek)
                     edges_out.append(GraphEdge(
                         source=path[i], target=path[i + 1],
-                        relation="path_step", weight=path_idx,
+                        relation="path_step", weight=path_idx + 1,
                     ))
 
         return GraphResponse(
@@ -6415,12 +6415,12 @@ class GraphEngine:
             if "min_citations" in f:
                 cs = src.get("citation_stats") or {}
                 tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
-                if tc < f["min_citations"]:
+                if tc < int(f["min_citations"]):
                     return False
             if "max_citations" in f:
                 cs = src.get("citation_stats") or {}
                 tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
-                if tc > f["max_citations"]:
+                if tc > int(f["max_citations"]):
                     return False
             if "has_github" in f and src.get("has_github") != f["has_github"]:
                 return False
@@ -6674,7 +6674,7 @@ class GraphEngine:
                         seen_edges.add(ek)
                         edges_out.append(GraphEdge(
                             source=src_id, target=tgt_id,
-                            relation=pe.relation, weight=match_idx,
+                            relation=pe.relation, weight=match_idx + 1,
                         ))
 
         has_optional = any(e.optional for e in p_edges)
@@ -7248,7 +7248,7 @@ class GraphEngine:
         until_max_nodes = min(until.get("max_nodes", limit * 3), self.MAX_RESULTS)
         until_max_depth = min(until.get("max_depth", max_depth), 50)
         until_category = until.get("category")
-        until_min_cit = until.get("min_citations")
+        until_min_cit = int(until["min_citations"]) if until.get("min_citations") is not None else None
         collect_edges = gq.collect_edges
 
         _FIELDS = F.subgraph_fields
@@ -7284,9 +7284,9 @@ class GraphEngine:
 
             # Apply traverse_predicate filter (skip seed at depth 0)
             if predicate and depth > 0:
-                if "min_citations" in predicate and F.extract_citations(src) < predicate["min_citations"]:
+                if "min_citations" in predicate and F.extract_citations(src) < int(predicate["min_citations"]):
                     continue
-                if "max_citations" in predicate and F.extract_citations(src) > predicate["max_citations"]:
+                if "max_citations" in predicate and F.extract_citations(src) > int(predicate["max_citations"]):
                     continue
                 if "categories" in predicate:
                     if not set(predicate["categories"]) & set(src.get(F.node_categories) or []):
