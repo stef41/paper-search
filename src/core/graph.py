@@ -2673,7 +2673,11 @@ class GraphEngine:
                     if len(stack) > _MAX_CHAIN_DEPTH:
                         # Too deep — return what we have
                         result = max(result, len(stack) - 1)
-                        stack.pop()
+                        popped_node, _, popped_best = stack.pop()
+                        visited.discard(popped_node)
+                        if stack:
+                            parent = stack[-1]
+                            stack[-1] = (parent[0], parent[1], max(parent[2], 1 + popped_best))
                         continue
                     cur, cur_nbrs, best = stack[-1]
                     if cur_nbrs:
@@ -3530,9 +3534,10 @@ class GraphEngine:
         # Handle cycles — add remaining nodes sorted by date
         remaining = [n for n in node_list if n not in depth]
         remaining.sort(key=lambda x: paper_data.get(x, {}).get("submitted_date", "") or "")
+        base_depth = (max(depth.values()) + 1) if depth else 0
         for n in remaining:
             topo_order.append(n)
-            depth[n] = max(depth.values()) + 1 if depth else 0
+            depth[n] = base_depth
 
         nodes: list[GraphNode] = []
         edges_out: list[GraphEdge] = []
@@ -3560,7 +3565,7 @@ class GraphEngine:
             metadata={
                 "papers_in_subgraph": N,
                 "papers_in_order": len(topo_order),
-                "cycles_broken": N - len([n for n in node_list if n in set(topo_order[:N]) and in_deg.get(n, 0) == 0 or n in topo_order]),
+                "cycles_broken": len(remaining),
                 "max_depth": max_depth,
                 "depth_distribution": dict(Counter(depth[n] for n in topo_order[:limit])),
             },
@@ -3729,11 +3734,11 @@ class GraphEngine:
                                  metadata={"error": "need at least 2 papers"})
 
         # Build weighted undirected adjacency (also co-authorship)
+        # undirected already has both directions, so adj[aid][nbr] is sufficient
         adj: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
         for aid in paper_data:
             for nbr in undirected.get(aid, set()):
                 adj[aid][nbr] += 1.0
-                adj[nbr][aid] += 1.0
 
         # Co-authorship edges
         author_papers: dict[str, list[str]] = defaultdict(list)
@@ -4951,10 +4956,14 @@ class GraphEngine:
                     if total_path not in A:
                         heapq.heappush(B, (len(total_path), total_path))
 
-            if not B:
+            # Pop from B, skipping duplicates
+            while B:
+                _, next_path = heapq.heappop(B)
+                if next_path not in A:
+                    A.append(next_path)
+                    break
+            else:
                 break
-            _, next_path = heapq.heappop(B)
-            A.append(next_path)
 
         # Apply path filter if specified
         if gq.path_filter and A:
@@ -5298,14 +5307,10 @@ class GraphEngine:
             return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
                                  metadata={"error": "need at least 2 papers"})
 
-        # Build weighted adjacency (citation + co-authorship)
         adj: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
         for aid in paper_data:
             for nbr in undirected.get(aid, set()):
                 adj[aid][nbr] += 1.0
-                adj[nbr][aid] += 1.0
-
-        author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
             for a in src.get("authors", [])[:50]:
                 name = a.get("name", "") if isinstance(a, dict) else str(a)
@@ -6517,6 +6522,8 @@ class GraphEngine:
             candidates: set[str] | None = None
             all_edges_optional = True
 
+            optional_candidates: set[str] | None = None
+
             for pe in edges_from.get(alias, []):
                 if pe.target in assignment and assignment[pe.target] is not None:
                     rev_rel = "cited_by" if pe.relation == "cites" else (
@@ -6525,8 +6532,8 @@ class GraphEngine:
                     if not pe.optional:
                         all_edges_optional = False
                         candidates = nbrs if candidates is None else (candidates & nbrs)
-                    elif candidates is None:
-                        candidates = nbrs
+                    else:
+                        optional_candidates = nbrs if optional_candidates is None else (optional_candidates | nbrs)
 
             for pe in edges_to.get(alias, []):
                 if pe.source in assignment and assignment[pe.source] is not None:
@@ -6534,8 +6541,12 @@ class GraphEngine:
                     if not pe.optional:
                         all_edges_optional = False
                         candidates = nbrs if candidates is None else (candidates & nbrs)
-                    elif candidates is None:
-                        candidates = nbrs
+                    else:
+                        optional_candidates = nbrs if optional_candidates is None else (optional_candidates | nbrs)
+
+            # Use optional candidates only when no required edge constrained us
+            if candidates is None and optional_candidates is not None:
+                candidates = optional_candidates
 
             if candidates is None:
                 # No edge constraint: use all anchor candidates

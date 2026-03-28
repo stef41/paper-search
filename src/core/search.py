@@ -290,7 +290,7 @@ class QueryBuilder:
             bool_query["must"] = must
         if should:
             bool_query["should"] = should
-            if not must and not filter_clauses:
+            if not must:
                 bool_query["minimum_should_match"] = 1
         if filter_clauses:
             bool_query["filter"] = filter_clauses
