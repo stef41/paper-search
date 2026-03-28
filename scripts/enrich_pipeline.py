@@ -328,7 +328,7 @@ async def compute_citations(http: httpx.AsyncClient) -> tuple[int, int]:
         for h in hits:
             src = h["_source"]
             total_papers += 1
-            for ref_id in src.get("reference_ids", []):
+            for ref_id in (src.get("reference_ids") or []):
                 cited_by[ref_id].append(src["arxiv_id"])
 
         r = await http.post(f"{ES_URL}/_search/scroll", json={"scroll": "5m", "scroll_id": scroll_id})
@@ -418,7 +418,7 @@ async def compute_hindex(http: httpx.AsyncClient) -> tuple[int, int]:
         for h in hits:
             src = h["_source"]
             cites = (src.get("citation_stats") or {}).get("total_citations", 0) or 0
-            for a in src.get("authors", []):
+            for a in (src.get("authors") or []):
                 name = a.get("name", "").strip() if isinstance(a, dict) else str(a).strip()
                 if name:
                     author_citations[name].append(cites)
@@ -453,7 +453,7 @@ async def compute_hindex(http: httpx.AsyncClient) -> tuple[int, int]:
     while hits:
         for h in hits:
             src = h["_source"]
-            authors = src.get("authors", [])
+            authors = src.get("authors") or []
             first_author = src.get("first_author", "")
             has_update = False
             updated_authors = []

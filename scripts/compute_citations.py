@@ -58,7 +58,7 @@ async def scan_references(http: httpx.AsyncClient) -> dict[str, list[str]]:
         for h in hits:
             src = h["_source"]
             citing_id = src["arxiv_id"]
-            refs = src.get("reference_ids", [])
+            refs = src.get("reference_ids") or []
             total_papers += 1
             total_refs += len(refs)
 

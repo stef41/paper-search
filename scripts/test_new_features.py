@@ -215,7 +215,7 @@ r = es("/arxiv_papers/_search", {
 mismatches = 0
 for h in r["hits"]["hits"]:
     src = h["_source"]
-    ids_len = len(src.get("cited_by_ids", []))
+    ids_len = len(src.get("cited_by_ids") or [])
     count = (src.get("citation_stats") or {}).get("total_citations", 0)
     if ids_len != count:
         mismatches += 1
@@ -244,7 +244,7 @@ if r["hits"]["hits"]:
         "_source": ["reference_ids"]
     })
     if r2["hits"]["hits"]:
-        refs = r2["hits"]["hits"][0]["_source"].get("reference_ids", [])
+        refs = r2["hits"]["hits"][0]["_source"].get("reference_ids") or []
         test("Citation graph consistency (A cites B → B in A.reference_ids)",
              cited_paper in refs, f"{citer_id} doesn't reference {cited_paper}")
     else:

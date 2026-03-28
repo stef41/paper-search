@@ -1089,7 +1089,7 @@ class GraphEngine:
             scored.append((src, len(citing_cats), citing_cats))
 
         # Sort by number of distinct citing categories descending
-        scored.sort(key=lambda x: (-x[1], -(x[0].get("citation_stats") or {}.get("total_citations", 0))))
+        scored.sort(key=lambda x: (-x[1], -((x[0].get("citation_stats") or {}).get("total_citations", 0))))
         scored = scored[:limit]
 
         nodes: list[GraphNode] = []
@@ -2462,7 +2462,7 @@ class GraphEngine:
         node_ids = set(paper_data.keys())
         author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
-            for a in src.get("authors") or [][:50]:
+            for a in (src.get("authors") or [])[:50]:
                 name = a.get("name", "") if isinstance(a, dict) else str(a)
                 if name:
                     author_papers[name].append(aid)
@@ -3752,7 +3752,7 @@ class GraphEngine:
         # Co-authorship edges
         author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
-            for a in src.get("authors") or [][:50]:
+            for a in (src.get("authors") or [])[:50]:
                 name = a.get("name", "") if isinstance(a, dict) else str(a)
                 if name:
                     author_papers[name].append(aid)
@@ -5324,7 +5324,7 @@ class GraphEngine:
                 adj[aid][nbr] += 1.0
         author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
-            for a in src.get("authors") or [][:50]:
+            for a in (src.get("authors") or [])[:50]:
                 name = a.get("name", "") if isinstance(a, dict) else str(a)
                 if name:
                     author_papers[name].append(aid)
@@ -6013,7 +6013,7 @@ class GraphEngine:
             paper_authors: dict[str, list[str]] = {}
             for aid, src in paper_data.items():
                 paper_authors[aid] = [a.get("name", "") if isinstance(a, dict) else str(a)
-                                       for a in src.get("authors") or [][:15] if a]
+                                       for a in (src.get("authors") or [])[:15] if a]
 
             author_coauth: Counter[tuple[str, str]] = Counter()
             for aid, authors in paper_authors.items():
@@ -6282,7 +6282,7 @@ class GraphEngine:
         if "co_authored" in used_relations:
             for aid, src in paper_cache.items():
                 names = []
-                for a in src.get("authors") or [][:50]:
+                for a in (src.get("authors") or [])[:50]:
                     name = a.get("name", "") if isinstance(a, dict) else str(a)
                     if name:
                         names.append(name)

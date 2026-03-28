@@ -63,7 +63,7 @@ async def scan_papers_with_citations(http: httpx.AsyncClient) -> dict[str, list[
         for h in hits:
             src = h["_source"]
             citations = (src.get("citation_stats") or {}).get("total_citations", 0) or 0
-            authors = src.get("authors", [])
+            authors = src.get("authors") or []
             arxiv_id = src["arxiv_id"]
             total += 1
 
@@ -121,7 +121,7 @@ async def update_h_indices(
         for h in hits:
             src = h["_source"]
             doc_id = h["_id"]
-            authors = src.get("authors", [])
+            authors = src.get("authors") or []
             first_author = src.get("first_author", "")
 
             has_update = False
