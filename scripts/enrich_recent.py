@@ -7,6 +7,7 @@ data, enriching enough to demo rising_interdisciplinary queries.
 import asyncio
 import sys
 import time
+from datetime import datetime, timezone
 import httpx
 import statistics
 
@@ -124,6 +125,8 @@ async def main():
                     "total_references": fields["references_stats.total_references"],
                 },
                 "first_author_h_index": fields["first_author_h_index"],
+                "enrichment_source": "semantic_scholar",
+                "enriched_at": datetime.now(timezone.utc).isoformat(),
             }}
             await http.post(f"{ES_URL}/{INDEX}/_update/{doc_id}", json=update_body, timeout=10)
             enriched += 1

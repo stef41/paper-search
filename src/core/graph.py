@@ -1083,7 +1083,7 @@ class GraphEngine:
         scored: list[tuple[dict, int, list[str]]] = []
         for hit in papers_resp["hits"]["hits"]:
             src = hit["_source"]
-            citing_cats = (src.get("citation_stats") or {}).get("top_citing_categories", [])
+            citing_cats = (src.get("citation_stats") or {}).get("top_citing_categories") or []
             if len(citing_cats) < min_citing_cats:
                 continue
             scored.append((src, len(citing_cats), citing_cats))
@@ -1228,7 +1228,7 @@ class GraphEngine:
         for sp in seed_papers[:500]:
             nodes.append(self._make_paper_node(sp, {
                 "role": "seed",
-                f"{field}_count": len(sp.get(field, [])),
+                f"{field}_count": len(sp.get(field) or []),
             }))
 
         relation = "cites" if direction == "references" else "cited_by"
@@ -1256,7 +1256,7 @@ class GraphEngine:
                 ))
             # Edges from seed → category (aggregated)
             for sp in seed_papers[:500]:
-                ref_set = set(sp.get(field, []))
+                ref_set = set(sp.get(field) or [])
                 for cat, _ in sorted_cats:
                     overlap = len(ref_set & set(cat_papers[cat]))
                     if overlap > 0:
@@ -7229,7 +7229,7 @@ class GraphEngine:
                 if "max_citations" in predicate and F.extract_citations(src) > predicate["max_citations"]:
                     continue
                 if "categories" in predicate:
-                    if not set(predicate["categories"]) & set(src.get(F.node_categories, [])):
+                    if not set(predicate["categories"]) & set(src.get(F.node_categories) or []):
                         continue
                 if "primary_category" in predicate:
                     if src.get(F.node_primary_category) != predicate["primary_category"]:
@@ -7246,7 +7246,7 @@ class GraphEngine:
             nodes_out.append(self._make_paper_node(src, {"depth": depth}))
 
             # Check until (stop) conditions
-            if until_category and until_category in src.get(F.node_categories, []):
+            if until_category and until_category in (src.get(F.node_categories) or []):
                 found_target = True
                 break
             if until_min_cit is not None and F.extract_citations(src) >= until_min_cit:

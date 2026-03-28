@@ -8,6 +8,7 @@ import asyncio
 import json
 import sys
 import statistics
+from datetime import datetime, timezone
 import httpx
 
 S2_API = "https://api.semanticscholar.org/graph/v1"
@@ -152,6 +153,8 @@ async def main():
                     "first_author_h_index": authors[0].get("hIndex") if authors else None,
                     "reference_ids": ref_ids,
                     "cited_by_ids": cited_by_ids,
+                    "enrichment_source": "semantic_scholar",
+                    "enriched_at": datetime.now(timezone.utc).isoformat(),
                 }}
                 bulk_body.append(json.dumps(update))
                 batch_enriched += 1
