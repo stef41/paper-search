@@ -167,6 +167,7 @@ class GraphEngine:
         self.client = client
         self.index = index
         self.F = fields or ARXIV_FIELDS
+        self._active_id_filter: list[str] | None = None
 
     async def execute(
         self,
@@ -365,7 +366,7 @@ class GraphEngine:
             if pf.any_node_matches:
                 # Check intermediate nodes (exclude source and target)
                 intermediates = path[1:-1] if len(path) > 2 else []
-                if intermediates and not any(self._node_matches_path_filter(
+                if not intermediates or not any(self._node_matches_path_filter(
                     paper_cache.get(pid, {}), pf.any_node_matches) for pid in intermediates):
                     continue
             result.append(path)
@@ -380,10 +381,14 @@ class GraphEngine:
     ) -> dict[str, Any]:
         """Build an ES query dict incorporating all SearchRequest filters."""
         if search_request is None:
-            return {"match_all": {}}
-        builder = QueryBuilder(search_request, embedding)
-        q = builder._build_query()
-        return q if q else {"match_all": {}}
+            q: dict[str, Any] = {"match_all": {}}
+        else:
+            builder = QueryBuilder(search_request, embedding)
+            q = builder._build_query() or {"match_all": {}}
+        # If a pipeline/projection set an active ID filter, apply it
+        if self._active_id_filter is not None:
+            q = {"bool": {"must": [q], "filter": [{"terms": {"arxiv_id": self._active_id_filter}}]}}
+        return q
 
     def _build_knn(
         self,
@@ -6792,7 +6797,14 @@ class GraphEngine:
             step_sr = sr if step_idx == 0 and current_paper_ids is None else None
             step_emb = emb if step_idx == 0 and current_paper_ids is None else None
 
-            result = await handler(step_gq, step_sr, step_emb)
+            # Restrict handlers that use _base_query to previous step's IDs
+            prev_filter = self._active_id_filter
+            if current_paper_ids is not None:
+                self._active_id_filter = current_paper_ids[:2000]
+            try:
+                result = await handler(step_gq, step_sr, step_emb)
+            finally:
+                self._active_id_filter = prev_filter
 
             # Extract paper IDs from result nodes
             paper_ids = [n.id for n in result.nodes if n.type == "paper"]
@@ -6959,16 +6971,24 @@ class GraphEngine:
             fetch_batches = [to_fetch[i:i + 100] for i in range(0, len(to_fetch), 100)]
             async def _fetch_subgraph_batch(batch: list[str]) -> dict:
                 nbr_query: dict[str, Any] = {"terms": {"arxiv_id": batch}}
-                if sf.categories or sf.primary_category or sf.date_from or sf.date_to:
-                    nbr_filters = [nbr_query]
-                    if sf.categories:
-                        nbr_filters.append({"terms": {"categories": sf.categories}})
-                    if sf.primary_category:
-                        nbr_filters.append({"term": {"primary_category": sf.primary_category}})
-                    if sf.date_from:
-                        nbr_filters.append({"range": {"submitted_date": {"gte": sf.date_from}}})
-                    if sf.date_to:
-                        nbr_filters.append({"range": {"submitted_date": {"lte": sf.date_to}}})
+                nbr_filters: list[dict[str, Any]] = [nbr_query]
+                if sf.categories:
+                    nbr_filters.append({"terms": {"categories": sf.categories}})
+                if sf.exclude_categories:
+                    nbr_filters.append({"bool": {"must_not": [{"terms": {"categories": sf.exclude_categories}}]}})
+                if sf.primary_category:
+                    nbr_filters.append({"term": {"primary_category": sf.primary_category}})
+                if sf.date_from:
+                    nbr_filters.append({"range": {"submitted_date": {"gte": sf.date_from}}})
+                if sf.date_to:
+                    nbr_filters.append({"range": {"submitted_date": {"lte": sf.date_to}}})
+                if sf.min_citations is not None:
+                    nbr_filters.append({"range": {"citation_stats.total_citations": {"gte": sf.min_citations}}})
+                if sf.max_citations is not None:
+                    nbr_filters.append({"range": {"citation_stats.total_citations": {"lte": sf.max_citations}}})
+                if sf.has_github is not None:
+                    nbr_filters.append({"term": {"has_github": sf.has_github}})
+                if len(nbr_filters) > 1:
                     nbr_query = {"bool": {"filter": nbr_filters}}
                 return await self.client.search(
                     index=self.index,
