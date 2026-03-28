@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+RUN groupadd -r arxiv && useradd -r -g arxiv -d /app -s /sbin/nologin arxiv
+
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -10,6 +12,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
+
+RUN chown -R arxiv:arxiv /app
+
+USER arxiv
 
 # Default: run the continuous OAI-PMH harvester
 # Override with:

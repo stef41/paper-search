@@ -6,7 +6,8 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from xml.etree.ElementTree import fromstring
+
+from lxml.etree import fromstring, XMLParser
 
 import httpx
 import structlog
@@ -178,7 +179,8 @@ async def fetch_oai_page(
     resp = await client.get(base_url, params=params, timeout=120)
     resp.raise_for_status()
 
-    root = fromstring(resp.content)
+    parser = XMLParser(resolve_entities=False, no_network=True)
+    root = fromstring(resp.content, parser=parser)
     records_el = root.findall(".//oai:record", OAI_NAMESPACES)
 
     papers = []
@@ -411,15 +413,21 @@ def cli_main():
     parser.add_argument("--once", action="store_true", help="Run once, don't loop")
     args = parser.parse_args()
 
-    if args.once:
-        asyncio.run(run_ingestion_cycle(
-            from_date=args.from_date,
-            until_date=args.until_date,
-            skip_embeddings=args.skip_embeddings,
-            set_spec=args.set_spec,
-        ))
-    else:
-        asyncio.run(main())
+    async def _run() -> None:
+        try:
+            if args.once:
+                await run_ingestion_cycle(
+                    from_date=args.from_date,
+                    until_date=args.until_date,
+                    skip_embeddings=args.skip_embeddings,
+                    set_spec=args.set_spec,
+                )
+            else:
+                await main()
+        finally:
+            await close_es_client()
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

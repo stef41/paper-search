@@ -180,6 +180,16 @@ class SearchRequest(BaseModel):
     offset: int = Field(default=0, ge=0, le=50000)
     limit: int = Field(default=20, ge=1, le=200)
 
+    @field_validator("limit")
+    @classmethod
+    def validate_result_window(cls, v: int, info: Any) -> int:
+        offset = info.data.get("offset", 0)
+        if offset + v > 50200:
+            raise ValueError(
+                f"offset ({offset}) + limit ({v}) = {offset + v} exceeds max result window (50200)"
+            )
+        return v
+
     # Response control
     include_embeddings: bool = False  # Admin-only; ignored for non-admin requests
     highlight: bool = True

@@ -337,11 +337,11 @@ class GraphEngine:
                 return False
         if "date_from" in filters:
             sd = src.get("submitted_date", "")
-            if sd and sd < filters["date_from"]:
+            if sd and sd[:10] < filters["date_from"][:10]:
                 return False
         if "date_to" in filters:
             sd = src.get("submitted_date", "")
-            if sd and sd > filters["date_to"]:
+            if sd and sd[:10] > filters["date_to"][:10]:
                 return False
         return True
 
@@ -2981,7 +2981,7 @@ class GraphEngine:
         adapts all node construction across all 52 handlers."""
         F = self.F
         props: dict[str, Any] = {
-            "categories": src.get(F.node_categories, []),
+            "categories": src.get(F.node_categories) or [],
             "primary_category": src.get(F.node_primary_category),
             "citations": F.extract_citations(src),
             "submitted_date": src.get(F.node_timestamp),
@@ -6379,11 +6379,11 @@ class GraphEngine:
                 return False
             if "date_from" in f:
                 sd = src.get("submitted_date", "")
-                if sd and sd < f["date_from"]:
+                if sd and sd[:10] < f["date_from"][:10]:
                     return False
             if "date_to" in f:
                 sd = src.get("submitted_date", "")
-                if sd and sd > f["date_to"]:
+                if sd and sd[:10] > f["date_to"][:10]:
                     return False
             return True
 
@@ -7185,8 +7185,8 @@ class GraphEngine:
         direction = gq.traverse_direction
         predicate = gq.traverse_predicate
         until = gq.traverse_until
-        until_max_nodes = until.get("max_nodes", limit * 3)
-        until_max_depth = until.get("max_depth", max_depth)
+        until_max_nodes = min(until.get("max_nodes", limit * 3), self.MAX_RESULTS)
+        until_max_depth = min(until.get("max_depth", max_depth), 50)
         until_category = until.get("category")
         until_min_cit = until.get("min_citations")
         collect_edges = gq.collect_edges
@@ -7388,28 +7388,31 @@ class GraphEngine:
         r1, r2 = sub_results
         ids1 = {n.id for n in r1.nodes}
         ids2 = {n.id for n in r2.nodes}
+        result_limit = min(gq.limit or self.MAX_RESULTS, self.MAX_RESULTS)
 
         if mode == "union":
             node_map: dict[str, GraphNode] = {}
             for n in r1.nodes + r2.nodes:
                 if n.id not in node_map:
                     node_map[n.id] = n
-            nodes = list(node_map.values())
+            nodes = list(node_map.values())[:result_limit]
+            retained_ids = {n.id for n in nodes}
             edge_set: set[tuple[str, str, str]] = set()
             edges: list[GraphEdge] = []
             for e in r1.edges + r2.edges:
                 ek = (e.source, e.target, e.relation)
-                if ek not in edge_set:
+                if ek not in edge_set and e.source in retained_ids and e.target in retained_ids:
                     edge_set.add(ek)
                     edges.append(e)
         else:
             shared = ids1 & ids2
-            nodes = [n for n in r1.nodes if n.id in shared]
+            nodes = [n for n in r1.nodes if n.id in shared][:result_limit]
+            retained_ids = {n.id for n in nodes}
             edge_set = set()
             edges = []
             for e in r1.edges + r2.edges:
                 ek = (e.source, e.target, e.relation)
-                if ek not in edge_set and e.source in shared and e.target in shared:
+                if ek not in edge_set and e.source in retained_ids and e.target in retained_ids:
                     edge_set.add(ek)
                     edges.append(e)
 

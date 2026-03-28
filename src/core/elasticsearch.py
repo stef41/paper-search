@@ -36,6 +36,7 @@ def get_index_mapping(embedding_dim: int) -> dict:
             "number_of_shards": 2,
             "number_of_replicas": 0,
             "refresh_interval": "5s",
+            "max_result_window": 50200,
             "analysis": {
                 "analyzer": {
                     "arxiv_analyzer": {

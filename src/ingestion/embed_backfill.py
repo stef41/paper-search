@@ -14,7 +14,7 @@ import time
 import structlog
 
 from src.core.config import get_settings
-from src.core.elasticsearch import get_es_client, ensure_index
+from src.core.elasticsearch import get_es_client, ensure_index, close_es_client
 from src.core.embeddings import encode_texts
 
 logger = structlog.get_logger()
@@ -98,13 +98,20 @@ async def backfill_embeddings(
     return total
 
 
+async def _main(batch_size: int, max_papers: int | None) -> None:
+    try:
+        await backfill_embeddings(batch_size=batch_size, max_papers=max_papers)
+    finally:
+        await close_es_client()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Backfill embeddings for papers")
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--max-papers", type=int, default=None)
     args = parser.parse_args()
 
-    asyncio.run(backfill_embeddings(
+    asyncio.run(_main(
         batch_size=args.batch_size,
         max_papers=args.max_papers,
     ))
