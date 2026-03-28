@@ -612,8 +612,15 @@ class GraphEngine:
         edges: list[GraphEdge] = []
         seen_authors: set[str] = set()
 
-        # Seed author node
-        seed_count = author_papers.pop(seed, total_papers)
+        # Seed author node — resolve canonical name from aggregation (case-insensitive)
+        seed_lower = seed.lower()
+        canonical_seed = seed
+        for k in list(author_papers.keys()):
+            if k.lower() == seed_lower:
+                canonical_seed = k
+                break
+        seed_count = author_papers.pop(canonical_seed, total_papers)
+        seed = canonical_seed
         nodes.append(GraphNode(
             id=seed, label=seed, type="author",
             properties={"paper_count": seed_count, "depth": 0},
@@ -649,7 +656,7 @@ class GraphEngine:
                 sub_resp = await self._agg_search(sub_combined, aggs, size=0, sr=sr, emb=emb)
                 for bucket in sub_resp["aggregations"]["coauthors"]["names"]["buckets"]:
                     name2 = bucket["key"]
-                    if name2 == coauthor or name2 == seed:
+                    if name2 == coauthor or name2.lower() == seed_lower:
                         continue
                     if name2 not in seen_authors:
                         nodes.append(GraphNode(
@@ -1514,7 +1521,7 @@ class GraphEngine:
 
         for bucket in linked_resp["aggregations"]["authors_nested"]["by_author"]["buckets"][:limit]:
             name = bucket["key"]
-            if name == seed:
+            if name.lower() == seed.lower():
                 continue
             nodes.append(GraphNode(
                 id=name, label=name, type="author",
@@ -2182,11 +2189,12 @@ class GraphEngine:
                 break
 
         # Filter out dangling edges (nodes not found in ES or beyond fetch cap)
-        node_ids = {n.id for n in nodes}
-        edges = [e for e in edges if e.source in node_ids and e.target in node_ids]
+        trimmed = nodes[:limit * 3]
+        trimmed_ids = {n.id for n in trimmed}
+        edges = [e for e in edges if e.source in trimmed_ids and e.target in trimmed_ids]
 
         return GraphResponse(
-            nodes=nodes[:limit * 3], edges=edges,
+            nodes=trimmed, edges=edges,
             total=len(seen), took_ms=0,
             metadata={
                 "direction": direction,
