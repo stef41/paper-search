@@ -95,9 +95,9 @@ class FieldMapping:
         return src.get(self.node_label, src.get(self.node_id, ""))
 
     def extract_authors(self, src: dict, max_n: int = 50) -> list[str]:
-        authors = src.get(self.node_authors, [])[:max_n]
+        authors = src.get(self.node_authors) or []
         return [a.get(self.node_author_name, "") if isinstance(a, dict) else str(a)
-                for a in authors]
+                for a in authors[:max_n]]
 
     def extract_citations(self, src: dict) -> int:
         cs = src.get(self.node_metrics) or {}
@@ -7273,8 +7273,14 @@ class GraphEngine:
             )
 
         sub_results: list[GraphResponse] = []
-        for sq_dict in gq.set_queries[:2]:
-            sub_gq = GraphQuery(**sq_dict)
+        for i, sq_dict in enumerate(gq.set_queries[:2]):
+            try:
+                sub_gq = GraphQuery(**sq_dict)
+            except Exception as e:
+                return GraphResponse(
+                    nodes=[], edges=[], total=0, took_ms=0,
+                    metadata={"error": f"Invalid sub-query {i + 1}: {e}"},
+                )
             sub_result = await self.execute(sub_gq, sr, emb)
             sub_results.append(sub_result)
 
