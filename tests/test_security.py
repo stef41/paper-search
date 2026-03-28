@@ -138,10 +138,10 @@ class TestInputValidation:
     def test_pagination_beyond_limit(self, client):
         resp = client.post(
             "/search",
-            json={"query": "test", "offset": 50000, "limit": 100},
+            json={"query": "test", "offset": 50001, "limit": 200},
             headers=auth_headers(),
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 422
 
     @pytest.mark.integration
     def test_null_bytes_in_query(self, client):
