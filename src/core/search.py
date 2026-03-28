@@ -290,8 +290,7 @@ class QueryBuilder:
             bool_query["must"] = must
         if should:
             bool_query["should"] = should
-            if not must:
-                bool_query["minimum_should_match"] = 1
+            bool_query["minimum_should_match"] = 1
         if filter_clauses:
             bool_query["filter"] = filter_clauses
         if must_not:
@@ -329,8 +328,8 @@ class QueryBuilder:
             knn: dict[str, Any] = {
                 "field": field,
                 "query_vector": emb,
-                "k": min(self.req.limit, 100),
-                "num_candidates": min(self.req.limit * 10, 1000),
+                "k": min(self.req.offset + self.req.limit, 100),
+                "num_candidates": min((self.req.offset + self.req.limit) * 10, 1000),
                 "boost": sq.weight,
             }
             if knn_filter:

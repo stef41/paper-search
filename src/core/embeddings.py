@@ -47,7 +47,8 @@ def encode_paragraphs(abstract: str) -> list[list[float]]:
 
 
 def cache_key_for_text(text: str, level: str) -> str:
-    h = hashlib.sha256(f"{level}:{text}".encode()).hexdigest()[:32]
+    settings = get_settings()
+    h = hashlib.sha256(f"{settings.semantic_model}:{level}:{text}".encode()).hexdigest()[:32]
     return f"emb:{h}"
 
 
