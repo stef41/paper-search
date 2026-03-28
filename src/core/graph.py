@@ -1502,7 +1502,7 @@ class GraphEngine:
             if direction == "references":
                 edges.append(GraphEdge(source=seed, target=name, relation=relation, weight=bucket["doc_count"]))
             else:
-                edges.append(GraphEdge(source=name, target=seed, relation=relation, weight=bucket["doc_count"]))
+                edges.append(GraphEdge(source=seed, target=name, relation=relation, weight=bucket["doc_count"]))
 
         return GraphResponse(
             nodes=nodes, edges=edges,
@@ -2468,7 +2468,8 @@ class GraphEngine:
         labels: dict[str, str] = {aid: aid for aid in node_ids}
         node_list = list(node_ids)
 
-        for _ in range(max_iter):
+        converged_at = max_iter
+        for _iter in range(max_iter):
             random.shuffle(node_list)
             changed = False
             for nid in node_list:
@@ -2483,6 +2484,7 @@ class GraphEngine:
                     labels[nid] = most_common
                     changed = True
             if not changed:
+                converged_at = _iter + 1
                 break
 
         # Step 3: Build community clusters
@@ -2553,7 +2555,7 @@ class GraphEngine:
                 "edges_in_subgraph": sum(len(v) for v in adj.values()) // 2,
                 "communities_found": len(sorted_comms),
                 "largest_community": len(sorted_comms[0][1]) if sorted_comms else 0,
-                "iterations": max_iter,
+                "iterations": converged_at,
             },
         )
 
@@ -4514,7 +4516,7 @@ class GraphEngine:
                 "edges_in_subgraph": sum(len(s) for s in out_edges.values()),
                 "max_authority": round(by_auth[0][1], 8) if by_auth else 0,
                 "max_hub": round(by_hub[0][2], 8) if by_hub else 0,
-                "iterations": max_iter,
+                "iterations": converged_at,
             },
         )
 
@@ -4672,7 +4674,7 @@ class GraphEngine:
                 "edges_in_subgraph": sum(len(s) for s in out_edges.values()),
                 "max_katz": round(scored[0][1], 8) if scored else 0,
                 "alpha": round(alpha, 4),
-                "iterations": max_iter,
+                "iterations": converged_at,
             },
         )
 
@@ -7004,9 +7006,35 @@ class GraphEngine:
 
         algo_gq = GraphQuery(**algo_params)
 
-        # Create a synthetic SearchRequest that limits to our exact paper IDs
-        # We do this by using seed_arxiv_ids to constrain the search
-        algo_gq.seed_arxiv_ids = list(paper_data.keys())[:2000]
+        # Constrain the algorithm to our exact projected paper IDs.
+        # This seed list is honoured by _build_citation_subgraph; for handlers
+        # that use _base_query instead, we propagate the subgraph filter
+        # constraints through a synthetic SearchRequest.
+        projected_ids = list(paper_data.keys())[:10000]
+        algo_gq.seed_arxiv_ids = projected_ids
+
+        # Build synthetic SearchRequest carrying the subgraph filter constraints
+        # so that handlers using _base_query / _agg_search also stay within scope.
+        projected_sr_kwargs: dict[str, Any] = {}
+        if sf.categories:
+            projected_sr_kwargs["categories"] = sf.categories
+        if sf.primary_category:
+            projected_sr_kwargs["primary_category"] = sf.primary_category
+        if sf.min_citations is not None:
+            projected_sr_kwargs["min_citations"] = sf.min_citations
+        if sf.max_citations is not None:
+            projected_sr_kwargs["max_citations"] = sf.max_citations
+        if sf.has_github is not None:
+            projected_sr_kwargs["has_github"] = sf.has_github
+        if sf.date_from or sf.date_to:
+            from src.core.models import DateRange
+            dt = DateRange()
+            if sf.date_from:
+                dt.gte = sf.date_from
+            if sf.date_to:
+                dt.lte = sf.date_to
+            projected_sr_kwargs["submitted_date"] = dt
+        projected_sr = SearchRequest(**projected_sr_kwargs)
 
         handler = {
             GraphQueryType.CATEGORY_DIVERSITY: self._category_diversity,
@@ -7067,7 +7095,9 @@ class GraphEngine:
             return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
                                  metadata={"error": f"No handler for algorithm: {gq.subgraph_algorithm}"})
 
-        result = await handler(algo_gq, None, None)
+        # Pass projected_sr so handlers using _base_query are limited to projected IDs.
+        # seed_arxiv_ids on algo_gq constrains _build_citation_subgraph users.
+        result = await handler(algo_gq, projected_sr, None)
 
         # Annotate with subgraph metadata
         result.metadata["subgraph_projection"] = {
@@ -7184,11 +7214,14 @@ class GraphEngine:
                 continue
 
             # Collect neighbor IDs based on direction
-            neighbor_ids: list[str] = []
+            outgoing_ids: list[str] = []
+            incoming_ids: list[str] = []
             if direction in ("outgoing", "both"):
-                neighbor_ids.extend(F.extract_outgoing(src))
+                outgoing_ids = F.extract_outgoing(src)
             if direction in ("incoming", "both"):
-                neighbor_ids.extend(F.extract_incoming(src))
+                incoming_ids = F.extract_incoming(src)
+            neighbor_ids: list[str] = outgoing_ids + incoming_ids
+            outgoing_set = set(outgoing_ids)
 
             # Batch-fetch neighbors not yet cached
             to_fetch = [nid for nid in neighbor_ids if nid not in paper_cache and nid not in visited][:2000]
@@ -7216,10 +7249,10 @@ class GraphEngine:
                     visited.add(nid)
                     queue.append((nid, depth + 1))
                     if collect_edges:
-                        if direction == "incoming":
-                            edges_out.append(GraphEdge(source=nid, target=current_id, relation="cites"))
-                        else:
+                        if nid in outgoing_set:
                             edges_out.append(GraphEdge(source=current_id, target=nid, relation="cites"))
+                        else:
+                            edges_out.append(GraphEdge(source=nid, target=current_id, relation="cites"))
 
         return GraphResponse(
             nodes=nodes_out,
@@ -7264,13 +7297,27 @@ class GraphEngine:
         sr: SearchRequest | None,
         emb: list[float] | None,
         mode: str,
+        _depth: int = 0,
     ) -> GraphResponse:
         """Execute two sub-queries and combine their graph results."""
+        _MAX_SET_DEPTH = 3
+        if _depth >= _MAX_SET_DEPTH:
+            return GraphResponse(
+                nodes=[], edges=[], total=0, took_ms=0,
+                metadata={"error": f"set operation nesting too deep (max {_MAX_SET_DEPTH})"},
+            )
+
         if not gq.set_queries or len(gq.set_queries) < 2:
             return GraphResponse(
                 nodes=[], edges=[], total=0, took_ms=0,
                 metadata={"error": "set_queries requires at least 2 sub-queries"},
             )
+
+        # Block recursive nesting that could cause exponential blowup
+        _BLOCKED_NESTED = {
+            GraphQueryType.GRAPH_UNION, GraphQueryType.GRAPH_INTERSECTION,
+            GraphQueryType.PIPELINE, GraphQueryType.SUBGRAPH_PROJECTION,
+        }
 
         sub_results: list[GraphResponse] = []
         for i, sq_dict in enumerate(gq.set_queries[:2]):
@@ -7280,6 +7327,11 @@ class GraphEngine:
                 return GraphResponse(
                     nodes=[], edges=[], total=0, took_ms=0,
                     metadata={"error": f"Invalid sub-query {i + 1}: {e}"},
+                )
+            if sub_gq.type in _BLOCKED_NESTED:
+                return GraphResponse(
+                    nodes=[], edges=[], total=0, took_ms=0,
+                    metadata={"error": f"Sub-query {i + 1}: {sub_gq.type.value} cannot be nested inside {mode}"},
                 )
             try:
                 sub_result = await self.execute(sub_gq, sr, emb)

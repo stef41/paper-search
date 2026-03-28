@@ -51,7 +51,6 @@ class Settings(BaseSettings):
     @property
     def api_key_list(self) -> list[str]:
         return [k.strip() for k in self.api_keys.split(",") if k.strip()]
-        extra = "ignore"
 
 
 _settings: Settings | None = None

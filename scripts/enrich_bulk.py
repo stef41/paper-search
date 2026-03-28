@@ -5,6 +5,7 @@ Uses the POST /paper/batch endpoint to fetch up to 500 papers per request,
 bypassing the per-paper rate limit issue.
 """
 import asyncio
+import json
 import sys
 import statistics
 import httpx
@@ -126,8 +127,7 @@ async def main():
 
                 # Build bulk update
                 doc_id = doc_ids[arxiv_id]
-                bulk_body.append(f'{{"update":{{"_id":"{doc_id}"}}}}')
-                import json
+                bulk_body.append(json.dumps({"update": {"_id": doc_id}}))
                 update = {
                     "doc": {
                         "citation_stats": {
