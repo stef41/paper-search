@@ -15,7 +15,7 @@ import re
 import time
 from datetime import datetime, timezone
 from typing import Any
-from xml.etree.ElementTree import fromstring
+from lxml.etree import fromstring, XMLParser
 
 import httpx
 import structlog
@@ -204,7 +204,8 @@ async def fetch_api_page(
     else:
         return [], 0
 
-    root = fromstring(resp.content)
+    parser = XMLParser(resolve_entities=False, no_network=True)
+    root = fromstring(resp.content, parser=parser)
 
     total_str = root.findtext("opensearch:totalResults", "0", ATOM_NS)
     total = int(total_str)

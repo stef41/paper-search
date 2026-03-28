@@ -281,6 +281,8 @@ class GraphEngine:
                     v = n.properties.get(field)
                     if v is None and field == "citations":
                         v = n.properties.get("total_citations")
+                    if v is None and field == "total_citations":
+                        v = n.properties.get("citations")
                     if v is not None:
                         try:
                             vals.append(float(v))
@@ -336,12 +338,16 @@ class GraphEngine:
             if tc < filters["min_citations"]:
                 return False
         if "date_from" in filters:
-            sd = src.get("submitted_date", "")
-            if sd and sd[:10] < filters["date_from"][:10]:
+            sd = src.get("submitted_date") or ""
+            if not sd:
+                return False
+            if sd[:10] < filters["date_from"][:10]:
                 return False
         if "date_to" in filters:
-            sd = src.get("submitted_date", "")
-            if sd and sd[:10] > filters["date_to"][:10]:
+            sd = src.get("submitted_date") or ""
+            if not sd:
+                return False
+            if sd[:10] > filters["date_to"][:10]:
                 return False
         return True
 
