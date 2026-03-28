@@ -3821,7 +3821,7 @@ class GraphEngine:
         # Compute modularity
         modularity = 0.0
         for c in set(comm.values()):
-            lc = comm_internal.get(c, 0.0) / 2.0
+            lc = comm_internal.get(c, 0.0)
             sc = comm_strength.get(c, 0.0)
             modularity += lc / m - (sc / (2.0 * m)) ** 2
 
@@ -7129,7 +7129,12 @@ class GraphEngine:
 
         # Pass projected_sr so handlers using _base_query are limited to projected IDs.
         # seed_arxiv_ids on algo_gq constrains _build_citation_subgraph users.
-        result = await handler(algo_gq, projected_sr, None)
+        prev_filter = self._active_id_filter
+        self._active_id_filter = projected_ids
+        try:
+            result = await handler(algo_gq, projected_sr, None)
+        finally:
+            self._active_id_filter = prev_filter
 
         # Annotate with subgraph metadata
         result.metadata["subgraph_projection"] = {
