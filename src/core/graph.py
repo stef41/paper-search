@@ -389,8 +389,21 @@ class GraphEngine:
         if search_request is None:
             q: dict[str, Any] = {"match_all": {}}
         else:
-            builder = QueryBuilder(search_request, embedding)
+            # Pass embeddings so exclude-mode semantic queries are available
+            exclude_embs = [(sq, emb) for sq, emb in self._embeddings if sq.mode == SemanticMode.EXCLUDE]
+            builder = QueryBuilder(search_request, embedding, embeddings=exclude_embs if exclude_embs else None)
             q = builder._build_query() or {"match_all": {}}
+            # Wrap in function_score if exclude semantics are present
+            exclude_functions = builder._build_exclude_functions()
+            if exclude_functions and q:
+                q = {
+                    "function_score": {
+                        "query": q,
+                        "functions": exclude_functions,
+                        "score_mode": "multiply",
+                        "boost_mode": "multiply",
+                    }
+                }
         # If a pipeline/projection set an active ID filter, apply it
         if self._active_id_filter is not None:
             q = {"bool": {"must": [q], "filter": [{"terms": {"arxiv_id": self._active_id_filter}}]}}
@@ -1193,7 +1206,8 @@ class GraphEngine:
         seed_body = {
             "query": seed_query,
             "size": min(limit * 2, 10000),
-            "_source": ["arxiv_id", "title", "categories", field],
+            "_source": ["arxiv_id", "title", "categories", "primary_category",
+                         "authors", "submitted_date", "citation_stats", field],
         }
         seed_resp = await self._do_search(seed_body, sr, emb)
 
@@ -6466,6 +6480,15 @@ class GraphEngine:
             elif prop == "authors":
                 return [a.get("name", "") if isinstance(a, dict) else str(a)
                         for a in src.get("authors") or []]
+            # Handle dotted nested properties like "citation_stats.total_citations"
+            if "." in prop:
+                obj = src
+                for part in prop.split("."):
+                    if isinstance(obj, dict):
+                        obj = obj.get(part)
+                    else:
+                        return None
+                return obj
             return src.get(prop)
 
         def _resolve_value(ref: str, assignment: dict[str, str | None]) -> Any:
