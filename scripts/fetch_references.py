@@ -22,7 +22,7 @@ import asyncio
 import json
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -140,7 +140,7 @@ async def fetch_papers(http: httpx.AsyncClient, mode: str, limit: int, stale_day
             "_source": ["arxiv_id"],
         }
     elif mode == "stale":
-        cutoff = (datetime.utcnow() - timedelta(days=stale_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=stale_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
         query = {
             "query": {
                 "bool": {
@@ -157,7 +157,7 @@ async def fetch_papers(http: httpx.AsyncClient, mode: str, limit: int, stale_day
             "_source": ["arxiv_id"],
         }
     elif mode == "retry":
-        cutoff = (datetime.utcnow() - timedelta(days=stale_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=stale_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
         query = {
             "query": {
                 "bool": {
@@ -236,7 +236,7 @@ async def process_batch(
         await resolve_openalex_ids(http, uncached, email)
 
     # Build ES bulk update
-    now_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     bulk_body: list[str] = []
     found = 0
     total_refs = 0
