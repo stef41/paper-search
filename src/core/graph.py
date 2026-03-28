@@ -663,7 +663,7 @@ class GraphEngine:
                     ))
 
         return GraphResponse(
-            nodes=nodes[:limit], edges=edges,
+            nodes=nodes[:limit], edges=[e for e in edges if e.source in {n.id for n in nodes[:limit]} and e.target in {n.id for n in nodes[:limit]}],
             total=total_papers, took_ms=0,
             metadata={"seed_author": seed, "depth": depth,
                        "unique_coauthors": len(seen_authors) - 1},
@@ -1419,8 +1419,10 @@ class GraphEngine:
                     edges.append(GraphEdge(source=src_id, target=tgt_id, relation="cites"))
                     edge_count += 1
 
+        trimmed = nodes[:limit * 3]
+        trimmed_ids = {n.id for n in trimmed}
         return GraphResponse(
-            nodes=nodes[:limit * 3], edges=edges,
+            nodes=trimmed, edges=[e for e in edges if e.source in trimmed_ids and e.target in trimmed_ids],
             total=len(linked_ids), took_ms=0,
             metadata={
                 "direction": direction,
@@ -6265,7 +6267,6 @@ class GraphEngine:
             to_fetch = list(neighbor_ids)[:10000]
             if not to_fetch:
                 break
-            already_attempted.update(to_fetch)
 
             # Parallel ES batch fetches
             batches = [to_fetch[i:i + 200] for i in range(0, len(to_fetch), 200)]
@@ -6285,6 +6286,7 @@ class GraphEngine:
                 for hit in nbr_resp.get("hits", {}).get("hits", []):
                     s = hit["_source"]
                     paper_cache[s.get("arxiv_id", "")] = s
+            already_attempted.update(to_fetch)
 
         # ── Step 3: Build adjacency structures ──
         out_edges: dict[str, set[str]] = defaultdict(set)

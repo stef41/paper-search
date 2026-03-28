@@ -366,7 +366,7 @@ class QueryBuilder:
             functions.append({
                 "script_score": {
                     "script": {
-                        "source": f"1.0 / (1.0 + params.w * (1.0 + cosineSimilarity(params.v, '{field}')))",
+                        "source": f"1.0 / (1.0 + params.w * Math.max(0.0, cosineSimilarity(params.v, '{field}')))",
                         "params": {
                             "v": emb,
                             "w": sq.weight,
