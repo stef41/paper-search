@@ -28,7 +28,9 @@ async def main():
                 "bool": {
                     "filter": [
                         {"range": {"submitted_date": {"gte": "2024-01-01"}}},
-                        {"term": {"citation_stats.total_citations": 0}},
+                    ],
+                    "must_not": [
+                        {"exists": {"field": "enriched_at"}},
                     ]
                 }
             },

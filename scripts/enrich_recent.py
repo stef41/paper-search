@@ -83,7 +83,9 @@ async def main():
                 "bool": {
                     "filter": [
                         {"range": {"submitted_date": {"gte": "2024-01-01"}}},
-                        {"term": {"citation_stats.total_citations": 0}},
+                    ],
+                    "must_not": [
+                        {"exists": {"field": "enriched_at"}},
                     ]
                 }
             },
@@ -128,7 +130,10 @@ async def main():
                 "enrichment_source": "semantic_scholar",
                 "enriched_at": datetime.now(timezone.utc).isoformat(),
             }}
-            await http.post(f"{ES_URL}/{INDEX}/_update/{doc_id}", json=update_body, timeout=10)
+            ur = await http.post(f"{ES_URL}/{INDEX}/_update/{doc_id}", json=update_body, timeout=10)
+            if ur.status_code != 200:
+                print(f"  [{i+1}/{len(hits)}] {arxiv_id} — ES update failed: {ur.status_code}")
+                continue
             enriched += 1
 
             status = f"cites={cites}"
