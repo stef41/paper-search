@@ -5431,6 +5431,7 @@ class GraphEngine:
 
                 # If community has >1 component, split
                 if len(components) > 1:
+                    moved = True  # splits may enable new Phase 1 moves
                     for comp in components[1:]:
                         for n in comp:
                             comm[n] = new_comm_id
