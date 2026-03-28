@@ -2179,6 +2179,10 @@ class GraphEngine:
             if len(nodes) >= limit * 10:
                 break
 
+        # Filter out dangling edges (nodes not found in ES or beyond fetch cap)
+        node_ids = {n.id for n in nodes}
+        edges = [e for e in edges if e.source in node_ids and e.target in node_ids]
+
         return GraphResponse(
             nodes=nodes[:limit * 3], edges=edges,
             total=len(seen), took_ms=0,
@@ -7319,6 +7323,11 @@ class GraphEngine:
                             edges_out.append(GraphEdge(source=current_id, target=nid, relation="cites"))
                         else:
                             edges_out.append(GraphEdge(source=nid, target=current_id, relation="cites"))
+
+        # Filter out dangling edges (nodes that failed predicate or weren't fetched)
+        if collect_edges:
+            node_ids = {n.id for n in nodes_out}
+            edges_out = [e for e in edges_out if e.source in node_ids and e.target in node_ids]
 
         return GraphResponse(
             nodes=nodes_out,

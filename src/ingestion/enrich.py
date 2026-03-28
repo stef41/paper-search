@@ -158,7 +158,7 @@ async def enrich_papers(
             }
         },
         "size": batch_size,
-        "sort": [{"submitted_date": {"order": "desc"}}],
+        "sort": [{"submitted_date": {"order": "desc"}}, {"arxiv_id": {"order": "asc"}}],
         "_source": ["arxiv_id", "authors"],
     }
 
