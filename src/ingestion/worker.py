@@ -59,6 +59,8 @@ def parse_oai_record(record_xml: Any) -> dict | None:
 
     identifier = header.findtext("oai:identifier", "", OAI_NAMESPACES)
     arxiv_id = identifier.replace("oai:arXiv.org:", "")
+    if not arxiv_id:
+        return None
 
     metadata = record_xml.find("oai:metadata", OAI_NAMESPACES)
     if metadata is None:
@@ -209,8 +211,10 @@ def add_embeddings(papers: list[dict]) -> list[dict]:
     abstract_embs = encode_texts(abstracts)
 
     for i, paper in enumerate(papers):
-        paper["title_embedding"] = title_embs[i]
-        paper["abstract_embedding"] = abstract_embs[i]
+        if i < len(title_embs):
+            paper["title_embedding"] = title_embs[i]
+        if i < len(abstract_embs):
+            paper["abstract_embedding"] = abstract_embs[i]
 
     return papers
 
@@ -325,11 +329,22 @@ async def run_ingestion_cycle(
                     if p.get("submitted_date") and (not current_date or p["submitted_date"] > current_date):
                         current_date = p["submitted_date"][:10]
 
-                if not skip_embeddings:
-                    papers = add_embeddings(papers)
+                try:
+                    if not skip_embeddings:
+                        papers = add_embeddings(papers)
 
-                count = await index_batch(es, settings.es_index, papers)
-                total_indexed += count
+                    count = await index_batch(es, settings.es_index, papers)
+                    total_indexed += count
+                except Exception as e:
+                    logger.error("batch_processing_error", error=str(e), page=page_count)
+                    await save_state(
+                        es, source_key,
+                        last_harvested_date=current_date,
+                        resumption_token=token,
+                        total_harvested=total_indexed,
+                        status="interrupted",
+                    )
+                    raise
 
                 elapsed = time.monotonic() - start_time
                 rate = total_indexed / elapsed if elapsed > 0 else 0
