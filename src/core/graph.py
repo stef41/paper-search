@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import Counter, defaultdict
+from dataclasses import dataclass, field as dc_field
 from itertools import combinations, islice
 from typing import Any
 
@@ -55,13 +56,117 @@ from src.core.search import QueryBuilder
 logger = structlog.get_logger()
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Schema abstraction: decouple graph algorithms from ArXiv-specific field names
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class FieldMapping:
+    """Maps generic graph concepts to domain-specific ES field names.
+
+    Change ONLY this mapping to adapt the engine to a different data source
+    (e.g., Scopus, OpenAlex, DBLP, or any citation network).
+    """
+    node_id: str = "arxiv_id"
+    node_label: str = "title"
+    node_categories: str = "categories"
+    node_primary_category: str = "primary_category"
+    node_authors: str = "authors"
+    node_author_name: str = "name"     # nested field inside authors
+    node_timestamp: str = "submitted_date"
+    node_metrics: str = "citation_stats"
+    node_metrics_total: str = "total_citations"
+    outgoing_edges: str = "reference_ids"
+    incoming_edges: str = "cited_by_ids"
+    embedding_vector: str = "abstract_embedding"
+    has_code: str = "has_github"
+
+    @property
+    def subgraph_fields(self) -> list[str]:
+        """Fields needed for citation subgraph construction."""
+        return [self.node_id, self.node_label, self.node_categories,
+                self.node_primary_category, self.node_authors, self.node_timestamp,
+                self.node_metrics, self.outgoing_edges, self.incoming_edges]
+
+    def extract_id(self, src: dict) -> str:
+        return src[self.node_id]
+
+    def extract_label(self, src: dict) -> str:
+        return src.get(self.node_label, src.get(self.node_id, ""))
+
+    def extract_authors(self, src: dict, max_n: int = 50) -> list[str]:
+        authors = src.get(self.node_authors, [])[:max_n]
+        return [a.get(self.node_author_name, "") if isinstance(a, dict) else str(a)
+                for a in authors]
+
+    def extract_citations(self, src: dict) -> int:
+        cs = src.get(self.node_metrics) or {}
+        return cs.get(self.node_metrics_total, 0) if isinstance(cs, dict) else 0
+
+    def extract_outgoing(self, src: dict) -> list[str]:
+        return src.get(self.outgoing_edges, []) or []
+
+    def extract_incoming(self, src: dict) -> list[str]:
+        return src.get(self.incoming_edges, []) or []
+
+
+@dataclass
+class EdgeType:
+    """Definition of a graph edge type."""
+    name: str
+    description: str
+    directed: bool = True
+    source_type: str = "paper"
+    target_type: str = "paper"
+
+
+# ── Edge Type Registry ──
+# All recognized edge types. Handlers and pattern matching validate against this.
+EDGE_REGISTRY: dict[str, EdgeType] = {
+    "cites": EdgeType("cites", "Paper A references paper B", directed=True),
+    "cited_by": EdgeType("cited_by", "Paper A is cited by paper B", directed=True),
+    "co_authored": EdgeType("co_authored", "Papers share at least one author", directed=False),
+    "same_category": EdgeType("same_category", "Papers share at least one category", directed=False),
+    "similar_to": EdgeType("similar_to", "Papers are semantically similar (embedding cosine)", directed=False),
+    "contains": EdgeType("contains", "Community/component contains a paper", directed=True, source_type="community", target_type="paper"),
+    "inter_community": EdgeType("inter_community", "Edge between communities", directed=False, source_type="community", target_type="community"),
+    "mutual_citation": EdgeType("mutual_citation", "A cites B and B cites A", directed=False),
+    "co_occurs": EdgeType("co_occurs", "Categories co-occur on papers", directed=False, source_type="category", target_type="category"),
+    "published_in": EdgeType("published_in", "Author published in category", directed=True, source_type="author", target_type="category"),
+    "influences": EdgeType("influences", "Author influences another via citations", directed=True, source_type="author", target_type="author"),
+    "bibliographic_coupling": EdgeType("bibliographic_coupling", "Papers share references", directed=False),
+    "cocitation": EdgeType("cocitation", "Papers are co-cited together", directed=False),
+    "path_link": EdgeType("path_link", "Sequential link in a path", directed=True),
+    "walk_transition": EdgeType("walk_transition", "Random walk transition", directed=True),
+    "bridges": EdgeType("bridges", "Bridge edge whose removal disconnects graph", directed=False),
+    "triangle_edge": EdgeType("triangle_edge", "Part of a citation triangle", directed=True),
+    "chain_link": EdgeType("chain_link", "Part of a citation chain", directed=True),
+    "star_spoke": EdgeType("star_spoke", "Spoke in a star pattern", directed=True),
+    "predicted": EdgeType("predicted", "Predicted future link", directed=False),
+    "mst_edge": EdgeType("mst_edge", "Edge in minimum spanning tree", directed=False),
+}
+
+
+def get_edge_type(name: str) -> EdgeType:
+    """Get an edge type by name; returns a default if not in registry."""
+    return EDGE_REGISTRY.get(name, EdgeType(name, f"Custom edge type: {name}"))
+
+
+# Default mapping for ArXiv
+ARXIV_FIELDS = FieldMapping()
+
+
 class GraphEngine:
     """Executes graph-style queries against the ES index."""
 
     MAX_AGG_BUCKETS = 5000
     MAX_RESULTS = 10000
 
-    def __init__(self, client: AsyncElasticsearch, index: str):
+    def __init__(self, client: AsyncElasticsearch, index: str,
+                 fields: FieldMapping | None = None):
+        self.client = client
+        self.index = index
+        self.F = fields or ARXIV_FIELDS
         self.client = client
         self.index = index
 
@@ -140,6 +245,9 @@ class GraphEngine:
             GraphQueryType.PATTERN_MATCH: self._pattern_match,
             GraphQueryType.PIPELINE: self._pipeline,
             GraphQueryType.SUBGRAPH_PROJECTION: self._subgraph_projection,
+            GraphQueryType.TRAVERSE: self._traverse,
+            GraphQueryType.GRAPH_UNION: self._graph_union,
+            GraphQueryType.GRAPH_INTERSECTION: self._graph_intersection,
         }[graph_query.type]
 
         result = await handler(graph_query, search_request, self._first_boost_emb)
@@ -2736,11 +2844,12 @@ class GraphEngine:
             undirected:  {arxiv_id: set of all neighbors (both directions)}
         """
         limit = min(gq.limit or 50, self.MAX_RESULTS)
+        F = self.F
 
         if gq.seed_arxiv_id:
-            seed_query: dict[str, Any] = {"term": {"arxiv_id": gq.seed_arxiv_id}}
+            seed_query: dict[str, Any] = {"term": {F.node_id: gq.seed_arxiv_id}}
         elif gq.seed_arxiv_ids:
-            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:10000]}}
+            seed_query = {"terms": {F.node_id: gq.seed_arxiv_ids[:10000]}}
         else:
             base = self._base_query(sr, emb)
             seed_query = {
@@ -2748,16 +2857,14 @@ class GraphEngine:
                     "must": [base],
                     "filter": [
                         {"bool": {"should": [
-                            {"exists": {"field": "reference_ids"}},
-                            {"exists": {"field": "cited_by_ids"}},
+                            {"exists": {"field": F.outgoing_edges}},
+                            {"exists": {"field": F.incoming_edges}},
                         ]}}
                     ],
                 }
             }
 
-        _FIELDS = ["arxiv_id", "title", "categories", "primary_category",
-                    "authors", "submitted_date", "citation_stats",
-                    "reference_ids", "cited_by_ids"]
+        _FIELDS = F.subgraph_fields
 
         resp = await self._do_search({
             "query": seed_query,
@@ -2768,15 +2875,15 @@ class GraphEngine:
         paper_data: dict[str, dict] = {}
         for hit in resp["hits"]["hits"]:
             s = hit["_source"]
-            paper_data[s["arxiv_id"]] = s
+            paper_data[F.extract_id(s)] = s
 
         # ── Expansion pass: fetch neighbor papers ──
         neighbor_ids: set[str] = set()
         for src in paper_data.values():
-            for rid in (src.get("reference_ids", []) or []):
+            for rid in F.extract_outgoing(src):
                 if rid not in paper_data:
                     neighbor_ids.add(rid)
-            for cid in (src.get("cited_by_ids", []) or []):
+            for cid in F.extract_incoming(src):
                 if cid not in paper_data:
                     neighbor_ids.add(cid)
 
@@ -2788,7 +2895,7 @@ class GraphEngine:
                 self.client.search(
                     index=self.index,
                     body={
-                        "query": {"terms": {"arxiv_id": batch}},
+                        "query": {"terms": {F.node_id: batch}},
                         "size": len(batch),
                         "_source": _FIELDS,
                     },
@@ -2797,8 +2904,9 @@ class GraphEngine:
             for nbr_resp in results:
                 for hit in nbr_resp["hits"]["hits"]:
                     s = hit["_source"]
-                    if s["arxiv_id"] not in paper_data:
-                        paper_data[s["arxiv_id"]] = s
+                    nid = F.extract_id(s)
+                    if nid not in paper_data:
+                        paper_data[nid] = s
 
         node_ids = set(paper_data.keys())
         out_edges: dict[str, set[str]] = defaultdict(set)
@@ -2806,13 +2914,13 @@ class GraphEngine:
         undirected: dict[str, set[str]] = defaultdict(set)
 
         for aid, src in paper_data.items():
-            for rid in (src.get("reference_ids", []) or []):
+            for rid in F.extract_outgoing(src):
                 if rid in node_ids:
                     out_edges[aid].add(rid)
                     in_edges[rid].add(aid)
                     undirected[aid].add(rid)
                     undirected[rid].add(aid)
-            for cid in (src.get("cited_by_ids", []) or []):
+            for cid in F.extract_incoming(src):
                 if cid in node_ids:
                     out_edges[cid].add(aid)
                     in_edges[aid].add(cid)
@@ -2822,19 +2930,23 @@ class GraphEngine:
         return paper_data, out_edges, in_edges, undirected
 
     def _make_paper_node(self, src: dict, extra_props: dict | None = None) -> GraphNode:
-        """Create a standard paper GraphNode from an ES source dict."""
+        """Create a standard paper GraphNode from an ES source dict.
+
+        Uses self.F (FieldMapping) so changing the mapping automatically
+        adapts all node construction across all 52 handlers."""
+        F = self.F
         props: dict[str, Any] = {
-            "categories": src.get("categories", []),
-            "primary_category": src.get("primary_category"),
-            "citations": (src.get("citation_stats") or {}).get("total_citations", 0),
-            "submitted_date": src.get("submitted_date"),
-            "authors": [a.get("name", "") for a in src.get("authors", [])[:50]],
+            "categories": src.get(F.node_categories, []),
+            "primary_category": src.get(F.node_primary_category),
+            "citations": F.extract_citations(src),
+            "submitted_date": src.get(F.node_timestamp),
+            "authors": F.extract_authors(src),
         }
         if extra_props:
             props.update(extra_props)
         return GraphNode(
-            id=src["arxiv_id"],
-            label=src.get("title", src["arxiv_id"]),
+            id=F.extract_id(src),
+            label=F.extract_label(src),
             type="paper",
             properties=props,
         )
@@ -6972,3 +7084,238 @@ class GraphEngine:
         }
 
         return result
+
+    # ── 53. General traversal (BFS/DFS with user predicates) ──────────────
+
+    async def _traverse(
+        self,
+        gq: GraphQuery,
+        sr: SearchRequest | None,
+        emb: list[float] | None,
+    ) -> GraphResponse:
+        """General-purpose BFS traversal with user-defined predicates.
+
+        traverse_direction: outgoing | incoming | both
+        traverse_predicate: filter nodes during expansion
+        traverse_until: stop conditions (max_nodes, max_depth, category, min_citations)
+        """
+        from collections import deque
+
+        F = self.F
+        source_id = gq.seed_arxiv_id
+        if not source_id:
+            return GraphResponse(
+                nodes=[], edges=[], total=0, took_ms=0,
+                metadata={"error": "seed_arxiv_id required for traverse"},
+            )
+
+        limit = min(gq.limit or 50, self.MAX_RESULTS)
+        max_depth = min(gq.max_hops, 50)
+        direction = gq.traverse_direction
+        predicate = gq.traverse_predicate
+        until = gq.traverse_until
+        until_max_nodes = until.get("max_nodes", limit * 3)
+        until_max_depth = until.get("max_depth", max_depth)
+        until_category = until.get("category")
+        until_min_cit = until.get("min_citations")
+        collect_edges = gq.collect_edges
+
+        _FIELDS = F.subgraph_fields
+        paper_cache: dict[str, dict] = {}
+        visited: set[str] = set()
+        nodes_out: list[GraphNode] = []
+        edges_out: list[GraphEdge] = []
+
+        queue: deque[tuple[str, int]] = deque()
+        queue.append((source_id, 0))
+        visited.add(source_id)
+        found_target = False
+
+        while queue and len(nodes_out) < until_max_nodes:
+            current_id, depth = queue.popleft()
+
+            # Fetch paper if not cached
+            if current_id not in paper_cache:
+                resp = await self.client.search(
+                    index=self.index,
+                    body={
+                        "query": {"term": {F.node_id: current_id}},
+                        "size": 1,
+                        "_source": _FIELDS,
+                    },
+                )
+                if resp["hits"]["hits"]:
+                    paper_cache[current_id] = resp["hits"]["hits"][0]["_source"]
+
+            src = paper_cache.get(current_id)
+            if not src:
+                continue
+
+            # Apply traverse_predicate filter (skip seed at depth 0)
+            if predicate and depth > 0:
+                if "min_citations" in predicate and F.extract_citations(src) < predicate["min_citations"]:
+                    continue
+                if "max_citations" in predicate and F.extract_citations(src) > predicate["max_citations"]:
+                    continue
+                if "categories" in predicate:
+                    if not set(predicate["categories"]) & set(src.get(F.node_categories, [])):
+                        continue
+                if "primary_category" in predicate:
+                    if src.get(F.node_primary_category) != predicate["primary_category"]:
+                        continue
+                if "date_from" in predicate:
+                    ts = src.get(F.node_timestamp, "")
+                    if ts and ts < predicate["date_from"]:
+                        continue
+                if "date_to" in predicate:
+                    ts = src.get(F.node_timestamp, "")
+                    if ts and ts > predicate["date_to"]:
+                        continue
+
+            nodes_out.append(self._make_paper_node(src, {"depth": depth}))
+
+            # Check until (stop) conditions
+            if until_category and until_category in src.get(F.node_categories, []):
+                found_target = True
+                break
+            if until_min_cit is not None and F.extract_citations(src) >= until_min_cit:
+                found_target = True
+                break
+
+            if depth >= until_max_depth:
+                continue
+
+            # Collect neighbor IDs based on direction
+            neighbor_ids: list[str] = []
+            if direction in ("outgoing", "both"):
+                neighbor_ids.extend(F.extract_outgoing(src))
+            if direction in ("incoming", "both"):
+                neighbor_ids.extend(F.extract_incoming(src))
+
+            # Batch-fetch neighbors not yet cached
+            to_fetch = [nid for nid in neighbor_ids if nid not in paper_cache and nid not in visited][:2000]
+            if to_fetch:
+                batches = [to_fetch[i:i + 200] for i in range(0, len(to_fetch), 200)]
+                batch_results = await asyncio.gather(*(
+                    self.client.search(
+                        index=self.index,
+                        body={
+                            "query": {"terms": {F.node_id: batch}},
+                            "size": len(batch),
+                            "_source": _FIELDS,
+                        },
+                    ) for batch in batches
+                ))
+                for br in batch_results:
+                    for hit in br["hits"]["hits"]:
+                        s = hit["_source"]
+                        paper_cache[F.extract_id(s)] = s
+
+            for nid in neighbor_ids:
+                if nid not in visited and len(nodes_out) < until_max_nodes:
+                    visited.add(nid)
+                    queue.append((nid, depth + 1))
+                    if collect_edges:
+                        if direction == "incoming":
+                            edges_out.append(GraphEdge(source=nid, target=current_id, relation="cites"))
+                        else:
+                            edges_out.append(GraphEdge(source=current_id, target=nid, relation="cites"))
+
+        return GraphResponse(
+            nodes=nodes_out,
+            edges=edges_out if collect_edges else [],
+            total=len(nodes_out),
+            took_ms=0,
+            metadata={
+                "direction": direction,
+                "max_depth": until_max_depth,
+                "papers_in_subgraph": len(nodes_out),
+                "predicate_filters": list(predicate.keys()) if predicate else [],
+                "until_conditions": list(until.keys()) if until else [],
+                "target_found": found_target,
+            },
+        )
+
+    # ── 54. Graph union ──────────────────────────────────────────────────
+
+    async def _graph_union(
+        self,
+        gq: GraphQuery,
+        sr: SearchRequest | None,
+        emb: list[float] | None,
+    ) -> GraphResponse:
+        """Union of two sub-query results: all nodes and edges from both."""
+        return await self._graph_set_op(gq, sr, emb, mode="union")
+
+    # ── 55. Graph intersection ───────────────────────────────────────────
+
+    async def _graph_intersection(
+        self,
+        gq: GraphQuery,
+        sr: SearchRequest | None,
+        emb: list[float] | None,
+    ) -> GraphResponse:
+        """Intersection of two sub-query results: only nodes in both."""
+        return await self._graph_set_op(gq, sr, emb, mode="intersection")
+
+    async def _graph_set_op(
+        self,
+        gq: GraphQuery,
+        sr: SearchRequest | None,
+        emb: list[float] | None,
+        mode: str,
+    ) -> GraphResponse:
+        """Execute two sub-queries and combine their graph results."""
+        if not gq.set_queries or len(gq.set_queries) < 2:
+            return GraphResponse(
+                nodes=[], edges=[], total=0, took_ms=0,
+                metadata={"error": "set_queries requires at least 2 sub-queries"},
+            )
+
+        sub_results: list[GraphResponse] = []
+        for sq_dict in gq.set_queries[:2]:
+            sub_gq = GraphQuery(**sq_dict)
+            sub_result = await self.execute(sub_gq, sr, emb)
+            sub_results.append(sub_result)
+
+        r1, r2 = sub_results
+        ids1 = {n.id for n in r1.nodes}
+        ids2 = {n.id for n in r2.nodes}
+
+        if mode == "union":
+            node_map: dict[str, GraphNode] = {}
+            for n in r1.nodes + r2.nodes:
+                if n.id not in node_map:
+                    node_map[n.id] = n
+            nodes = list(node_map.values())
+            edge_set: set[tuple[str, str, str]] = set()
+            edges: list[GraphEdge] = []
+            for e in r1.edges + r2.edges:
+                ek = (e.source, e.target, e.relation)
+                if ek not in edge_set:
+                    edge_set.add(ek)
+                    edges.append(e)
+        else:
+            shared = ids1 & ids2
+            nodes = [n for n in r1.nodes if n.id in shared]
+            edge_set = set()
+            edges = []
+            for e in r1.edges + r2.edges:
+                ek = (e.source, e.target, e.relation)
+                if ek not in edge_set and e.source in shared and e.target in shared:
+                    edge_set.add(ek)
+                    edges.append(e)
+
+        return GraphResponse(
+            nodes=nodes,
+            edges=edges,
+            total=len(nodes),
+            took_ms=0,
+            metadata={
+                "operation": mode,
+                "query_1_nodes": len(ids1),
+                "query_2_nodes": len(ids2),
+                "result_nodes": len(nodes),
+                "result_edges": len(edges),
+            },
+        )

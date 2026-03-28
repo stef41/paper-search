@@ -314,6 +314,9 @@ class GraphQueryType(str, Enum):
     PATTERN_MATCH = "pattern_match"
     PIPELINE = "pipeline"
     SUBGRAPH_PROJECTION = "subgraph_projection"
+    TRAVERSE = "traverse"
+    GRAPH_UNION = "graph_union"
+    GRAPH_INTERSECTION = "graph_intersection"
 
 
 class PatternNode(BaseModel):
@@ -520,6 +523,20 @@ class GraphQuery(BaseModel):
         description="Algorithm to run on the projected subgraph (any existing graph type)")
     subgraph_params: dict[str, Any] = Field(default_factory=dict,
         description="Params for the algorithm running on the projected subgraph")
+
+    # ── General traversal ──
+    traverse_direction: str = Field(default="outgoing", pattern="^(outgoing|incoming|both)$",
+        description="Traversal direction: outgoing (references), incoming (citations), both")
+    traverse_predicate: dict[str, Any] = Field(default_factory=dict,
+        description="Filter predicate for nodes during traversal: {min_citations, max_citations, categories, primary_category, has_github, date_from, date_to}")
+    traverse_until: dict[str, Any] = Field(default_factory=dict,
+        description="Stop condition: {max_nodes, max_depth, min_citations, category}")
+    collect_edges: bool = Field(default=True,
+        description="Whether to include edges in traversal result")
+
+    # ── Graph set operations ──
+    set_queries: list[dict[str, Any]] = Field(default_factory=list,
+        description="Two sub-queries whose results to union/intersect. Each dict is a full graph query.")
 
     # ── Aggregation ──
     aggregations: list[Aggregation] | None = Field(default=None,

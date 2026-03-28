@@ -343,6 +343,40 @@ async def main():
                 "limit": 20,
             },
         },
+        "53_traverse": {
+            "query": "deep learning",
+            "graph": {
+                "type": "traverse",
+                "seed_arxiv_id": sid1,
+                "traverse_direction": "outgoing",
+                "traverse_predicate": {},
+                "traverse_until": {"max_nodes": 20, "max_depth": 2},
+                "collect_edges": True,
+                "limit": 20,
+            },
+        },
+        "54_graph_union": {
+            "query": "deep learning",
+            "graph": {
+                "type": "graph_union",
+                "set_queries": [
+                    {"type": "citation_traversal", "seed_arxiv_id": sid1, "limit": 10},
+                    {"type": "citation_traversal", "seed_arxiv_id": sid2, "limit": 10},
+                ],
+                "limit": 20,
+            },
+        },
+        "55_graph_intersection": {
+            "query": "deep learning",
+            "graph": {
+                "type": "graph_intersection",
+                "set_queries": [
+                    {"type": "citation_traversal", "seed_arxiv_id": sid1, "limit": 10},
+                    {"type": "citation_traversal", "seed_arxiv_id": sid2, "limit": 10},
+                ],
+                "limit": 20,
+            },
+        },
     }
 
     async with httpx.AsyncClient() as c:
