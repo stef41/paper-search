@@ -150,12 +150,21 @@ def create_app() -> FastAPI:
     _ddos_max = int(_ddos_limit)
     _ddos_window = {"second": 1, "minute": 60, "hour": 3600}.get(_ddos_window_str, 60)
     _ip_hits: dict[str, list[float]] = defaultdict(list)
+    _ip_last_sweep: float = 0.0
 
     @app.middleware("http")
     async def ddos_guard(request: Request, call_next):
+        nonlocal _ip_last_sweep
         client_ip = _get_client_ip(request)
         now = time.monotonic()
         cutoff = now - _ddos_window
+
+        # Periodic sweep: evict stale IPs every 60 seconds
+        if now - _ip_last_sweep > 60:
+            stale = [ip for ip, h in _ip_hits.items() if not h or h[-1] < cutoff]
+            for ip in stale:
+                del _ip_hits[ip]
+            _ip_last_sweep = now
 
         # Prune old entries and append current
         hits = _ip_hits[client_ip]
@@ -164,7 +173,7 @@ def create_app() -> FastAPI:
         while lo < len(hits) and hits[lo] < cutoff:
             lo += 1
         if lo:
-            _ip_hits[client_ip] = hits = hits[lo:]
+            del hits[:lo]
 
         if len(hits) >= _ddos_max:
             logger.warning("ddos_blocked", ip=client_ip, hits=len(hits), window=_ddos_window)

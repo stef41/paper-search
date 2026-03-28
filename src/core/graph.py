@@ -2607,13 +2607,16 @@ class GraphEngine:
 
         elif pattern == "triangle":
             # Find A→B→C→A
+            seen_tris: set[str] = set()
             for a in node_ids:
                 for b in cites.get(a, set()):
                     for c in cites.get(b, set()):
                         if a in cites.get(c, set()) and a != c:
                             tri = tuple(sorted([a, b, c]))
-                            # Deduplicate triangles
                             tri_key = "|".join(tri)
+                            if tri_key in seen_tris:
+                                continue
+                            seen_tris.add(tri_key)
                             _ensure_node(a)
                             _ensure_node(b)
                             _ensure_node(c)
@@ -2648,20 +2651,39 @@ class GraphEngine:
                 found_patterns += 1
 
         elif pattern == "chain":
-            # Find longest citation chains via DFS
-            memo: dict[str, int] = {}
+            # Find longest citation chains via iterative DFS (no memo —
+            # result depends on visited set, so caching is unsound).
+            _MAX_CHAIN_DEPTH = 200  # cap to avoid runaway exploration
 
             def _chain_len(node: str, visited: set[str]) -> int:
-                if node in memo:
-                    return memo[node]
-                best = 0
-                for nxt in cites.get(node, set()):
-                    if nxt not in visited:
+                # Iterative DFS with explicit stack
+                # Stack entries: (node, neighbor_iterator, current_best)
+                stack: list[tuple[str, list[str], int]] = []
+                nbrs = [n for n in cites.get(node, set()) if n not in visited]
+                stack.append((node, nbrs, 0))
+                result = 0
+                while stack:
+                    if len(stack) > _MAX_CHAIN_DEPTH:
+                        # Too deep — return what we have
+                        result = max(result, len(stack) - 1)
+                        stack.pop()
+                        continue
+                    cur, cur_nbrs, best = stack[-1]
+                    if cur_nbrs:
+                        nxt = cur_nbrs.pop()
                         visited.add(nxt)
-                        best = max(best, 1 + _chain_len(nxt, visited))
-                        visited.discard(nxt)
-                memo[node] = best
-                return best
+                        nxt_nbrs = [n for n in cites.get(nxt, set()) if n not in visited]
+                        stack.append((nxt, nxt_nbrs, 0))
+                    else:
+                        stack.pop()
+                        visited.discard(cur)
+                        if stack:
+                            parent = stack[-1]
+                            # Update parent's best with 1 + child's best
+                            stack[-1] = (parent[0], parent[1], max(parent[2], 1 + best))
+                        else:
+                            result = best
+                return result
 
             chains: list[tuple[str, int]] = []
             for a in node_ids:
@@ -3728,8 +3750,12 @@ class GraphEngine:
         comm: dict[str, int] = {n: i for i, n in enumerate(node_list)}
         # Community total strength
         comm_strength: dict[int, float] = {i: strength[n] for i, n in enumerate(node_list)}
-        # Community internal weight
+        # Community internal weight — initialize properly
         comm_internal: dict[int, float] = defaultdict(float)
+        for n in node_list:
+            for nbr, w in adj[n].items():
+                if comm[n] == comm[nbr]:
+                    comm_internal[comm[n]] += w / 2.0  # each edge counted from both sides
 
         for _ in range(max_iter):
             moved = False
@@ -3738,34 +3764,35 @@ class GraphEngine:
                 old_comm = comm[node]
                 ki = strength[node]
 
-                # Remove node from its community
-                comm_strength[old_comm] -= ki
-                for nbr, w in adj[node].items():
-                    if comm[nbr] == old_comm:
-                        comm_internal[old_comm] -= w
-
-                # Compute modularity gain for each neighboring community
+                # Compute weights from node to each neighboring community
                 nbr_comms: dict[int, float] = defaultdict(float)
                 for nbr, w in adj[node].items():
                     nbr_comms[comm[nbr]] += w
 
+                ki_old = nbr_comms.get(old_comm, 0.0)
+
+                # Remove node from its community for gain calculation
+                sigma_old = comm_strength[old_comm] - ki
+
                 best_comm = old_comm
                 best_gain = 0.0
                 for c, ki_in in nbr_comms.items():
+                    if c == old_comm:
+                        continue
                     sigma_tot = comm_strength.get(c, 0.0)
-                    gain = ki_in / m - (sigma_tot * ki) / (2.0 * m * m)
+                    # Standard Louvain gain: gain_into_c - loss_from_old
+                    gain = (ki_in - ki_old) / m - ki * (sigma_tot - sigma_old) / (2.0 * m * m)
                     if gain > best_gain:
                         best_gain = gain
                         best_comm = c
 
-                # Move node to best community
-                comm[node] = best_comm
-                comm_strength[best_comm] = comm_strength.get(best_comm, 0.0) + ki
-                for nbr, w in adj[node].items():
-                    if comm[nbr] == best_comm:
-                        comm_internal[best_comm] += w
-
                 if best_comm != old_comm:
+                    # Update community bookkeeping
+                    comm_strength[old_comm] -= ki
+                    comm_internal[old_comm] -= ki_old
+                    comm[node] = best_comm
+                    comm_strength[best_comm] = comm_strength.get(best_comm, 0.0) + ki
+                    comm_internal[best_comm] += nbr_comms.get(best_comm, 0.0)
                     moved = True
 
             if not moved:
@@ -4414,13 +4441,13 @@ class GraphEngine:
                     j = idx.get(citer)
                     if j is not None:
                         new_auth[i] += hub[j]
-            # Hub update: hub(u) = sum of auth(v) for all u→v
+            # Hub update: hub(u) = sum of auth(v) for all u→v (use NEW auth)
             new_hub = [0.0] * N
             for i, aid in enumerate(node_list):
                 for cited in out_edges.get(aid, set()):
                     j = idx.get(cited)
                     if j is not None:
-                        new_hub[i] += auth[j]
+                        new_hub[i] += new_auth[j]
             # Normalize
             norm_a = math.sqrt(sum(a * a for a in new_auth)) or 1.0
             norm_h = math.sqrt(sum(h * h for h in new_hub)) or 1.0
@@ -4679,6 +4706,8 @@ class GraphEngine:
             u = queue.popleft()
             if dist[u] >= max_hops:
                 continue
+            if len(dist) > 50000:
+                break
             if u not in paper_cache:
                 resp = await self.client.search(
                     index=self.index,
@@ -4709,24 +4738,23 @@ class GraphEngine:
 
         shortest_dist = dist[target]
 
-        # Enumerate all shortest paths via backtracking
+        # Enumerate all shortest paths via iterative backtracking
         all_paths: list[list[str]] = []
         MAX_PATHS = 500
 
-        def backtrack(current: str, path: list[str]):
-            if len(all_paths) >= MAX_PATHS:
-                return
+        # Iterative DFS to avoid RecursionError on deep/wide graphs
+        stack: list[tuple[str, list[str]]] = [(source, [source])]
+        while stack and len(all_paths) < MAX_PATHS:
+            current, path = stack.pop()
             if current == target:
-                all_paths.append(path[:])
-                return
+                all_paths.append(path)
+                continue
+            if len(path) > shortest_dist + 1:
+                continue
             current_dist = dist.get(current, float('inf'))
             for nbr in adj.get(current, set()):
                 if dist.get(nbr, float('inf')) == current_dist + 1:
-                    path.append(nbr)
-                    backtrack(nbr, path)
-                    path.pop()
-
-        backtrack(source, [source])
+                    stack.append((nbr, path + [nbr]))
 
         # Apply path filter if specified
         if gq.path_filter and all_paths:
@@ -4857,6 +4885,7 @@ class GraphEngine:
             if src_id in excluded_nodes or tgt_id in excluded_nodes:
                 return None
             prev: dict[str, str | None] = {src_id: None}
+            depth: dict[str, int] = {src_id: 0}
             queue = deque([src_id])
             while queue:
                 u = queue.popleft()
@@ -4869,17 +4898,14 @@ class GraphEngine:
                     return path[::-1]
                 if len(prev) > 50000:
                     return None
+                if depth[u] >= max_hops:
+                    continue
                 await fetch(u)
                 for nbr in get_neighbors(u):
                     if nbr not in prev and nbr not in excluded_nodes and (u, nbr) not in excluded_edges:
-                        hops = 0
-                        cur2: str | None = u
-                        while cur2 is not None:
-                            hops += 1
-                            cur2 = prev[cur2]
-                        if hops <= max_hops:
-                            prev[nbr] = u
-                            queue.append(nbr)
+                        prev[nbr] = u
+                        depth[nbr] = depth[u] + 1
+                        queue.append(nbr)
             return None
 
         # Find first shortest path
@@ -6768,83 +6794,13 @@ class GraphEngine:
 
             current_paper_ids = paper_ids
 
-        # The final step's result is the pipeline output
-        # Re-run with the final limit
-        last_step = gq.pipeline_steps[-1]
-        final_params = {"type": last_step.type, "limit": final_limit}
-        final_params.update(last_step.params)
-        if current_paper_ids:
-            final_params["seed_arxiv_ids"] = current_paper_ids[:2000]
-
-        final_gq = GraphQuery(**final_params)
-        final_type = GraphQueryType(last_step.type)
-        final_handler = {
-            GraphQueryType.CATEGORY_DIVERSITY: self._category_diversity,
-            GraphQueryType.COAUTHOR_NETWORK: self._coauthor_network,
-            GraphQueryType.AUTHOR_BRIDGE: self._author_bridge,
-            GraphQueryType.CROSS_CATEGORY_FLOW: self._cross_category_flow,
-            GraphQueryType.INTERDISCIPLINARY: self._interdisciplinary,
-            GraphQueryType.RISING_INTERDISCIPLINARY: self._rising_interdisciplinary,
-            GraphQueryType.CITATION_TRAVERSAL: self._citation_traversal,
-            GraphQueryType.PAPER_CITATION_NETWORK: self._paper_citation_network,
-            GraphQueryType.AUTHOR_INFLUENCE: self._author_influence,
-            GraphQueryType.TEMPORAL_EVOLUTION: self._temporal_evolution,
-            GraphQueryType.PAPER_SIMILARITY: self._paper_similarity,
-            GraphQueryType.DOMAIN_COLLABORATION: self._domain_collaboration,
-            GraphQueryType.AUTHOR_TOPIC_EVOLUTION: self._author_topic_evolution,
-            GraphQueryType.GITHUB_LANDSCAPE: self._github_landscape,
-            GraphQueryType.BIBLIOGRAPHIC_COUPLING: self._bibliographic_coupling,
-            GraphQueryType.COCITATION: self._cocitation,
-            GraphQueryType.MULTIHOP_CITATION: self._multihop_citation,
-            GraphQueryType.SHORTEST_CITATION_PATH: self._shortest_citation_path,
-            GraphQueryType.PAGERANK: self._pagerank,
-            GraphQueryType.COMMUNITY_DETECTION: self._community_detection,
-            GraphQueryType.CITATION_PATTERNS: self._citation_patterns,
-            GraphQueryType.CONNECTED_COMPONENTS: self._connected_components,
-            GraphQueryType.WEIGHTED_SHORTEST_PATH: self._weighted_shortest_path,
-            GraphQueryType.BETWEENNESS_CENTRALITY: self._betweenness_centrality,
-            GraphQueryType.CLOSENESS_CENTRALITY: self._closeness_centrality,
-            GraphQueryType.STRONGLY_CONNECTED_COMPONENTS: self._strongly_connected_components,
-            GraphQueryType.TOPOLOGICAL_SORT: self._topological_sort,
-            GraphQueryType.LINK_PREDICTION: self._link_prediction,
-            GraphQueryType.LOUVAIN_COMMUNITY: self._louvain_community,
-            GraphQueryType.DEGREE_CENTRALITY: self._degree_centrality,
-            GraphQueryType.EIGENVECTOR_CENTRALITY: self._eigenvector_centrality,
-            GraphQueryType.KCORE_DECOMPOSITION: self._kcore_decomposition,
-            GraphQueryType.ARTICULATION_POINTS: self._articulation_points,
-            GraphQueryType.INFLUENCE_MAXIMIZATION: self._influence_maximization,
-            GraphQueryType.HITS: self._hits,
-            GraphQueryType.HARMONIC_CENTRALITY: self._harmonic_centrality,
-            GraphQueryType.KATZ_CENTRALITY: self._katz_centrality,
-            GraphQueryType.ALL_SHORTEST_PATHS: self._all_shortest_paths,
-            GraphQueryType.K_SHORTEST_PATHS: self._k_shortest_paths,
-            GraphQueryType.RANDOM_WALK: self._random_walk,
-            GraphQueryType.TRIANGLE_COUNT: self._triangle_count,
-            GraphQueryType.GRAPH_DIAMETER: self._graph_diameter,
-            GraphQueryType.LEIDEN_COMMUNITY: self._leiden_community,
-            GraphQueryType.BRIDGE_EDGES: self._bridge_edges,
-            GraphQueryType.MIN_CUT: self._min_cut,
-            GraphQueryType.MINIMUM_SPANNING_TREE: self._minimum_spanning_tree,
-            GraphQueryType.NODE_SIMILARITY: self._node_similarity,
-            GraphQueryType.BIPARTITE_PROJECTION: self._bipartite_projection,
-            GraphQueryType.ADAMIC_ADAR_INDEX: self._adamic_adar_index,
-            GraphQueryType.PATTERN_MATCH: self._pattern_match,
-            GraphQueryType.SUBGRAPH_PROJECTION: self._subgraph_projection,
-            GraphQueryType.TRAVERSE: self._traverse,
-            GraphQueryType.GRAPH_UNION: self._graph_union,
-            GraphQueryType.GRAPH_INTERSECTION: self._graph_intersection,
-        }.get(final_type)
-
-        if final_handler is None:
-            return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
-                                 metadata={"error": f"No handler for final step type: {last_step.type}"})
-
-        final_result = await final_handler(final_gq, None, None)
+        # The final step's result IS the pipeline output (already executed in the loop)
+        final_result = result
 
         # Annotate with pipeline metadata
         final_result.metadata["pipeline_steps"] = step_results
         final_result.metadata["total_steps"] = len(gq.pipeline_steps)
-        final_result.metadata["pipeline_output_type"] = last_step.type
+        final_result.metadata["pipeline_output_type"] = gq.pipeline_steps[-1].type
 
         return final_result
 
