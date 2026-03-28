@@ -142,6 +142,7 @@ def parse_oai_record(record_xml: Any) -> dict | None:
         "abstract": abstract,
         "authors": author_list,
         "categories": categories,
+        "domains": list(set(c.split(".")[0] for c in categories)),
         "primary_category": categories[0] if categories else None,
         "submitted_date": submitted_date.isoformat() if submitted_date else None,
         "updated_date": updated_date.isoformat() if updated_date else None,

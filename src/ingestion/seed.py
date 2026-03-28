@@ -144,6 +144,7 @@ def parse_api_entry(entry) -> dict | None:
         "abstract": abstract,
         "authors": authors,
         "categories": categories,
+        "domains": list(set(c.split(".")[0] for c in categories)),
         "primary_category": primary_category,
         "submitted_date": submitted_date,
         "updated_date": updated_date,

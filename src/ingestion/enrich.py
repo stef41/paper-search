@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import statistics
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -26,7 +27,7 @@ from src.core.elasticsearch import get_es_client, ensure_index
 logger = structlog.get_logger()
 
 S2_API = "https://api.semanticscholar.org/graph/v1"
-S2_FIELDS = "citationCount,influentialCitationCount,references,citations.citationCount,citations.fieldsOfStudy,authors.hIndex,authors.citationCount,externalIds"
+S2_FIELDS = "citationCount,influentialCitationCount,references.fieldsOfStudy,citations.citationCount,citations.fieldsOfStudy,authors.hIndex,authors.citationCount,externalIds"
 
 # Semantic Scholar rate limit: 100 requests per 5 minutes (free tier)
 S2_DELAY = 3.1  # seconds between requests
@@ -209,7 +210,11 @@ async def enrich_papers(
                     await es.update(
                         index=settings.es_index,
                         id=arxiv_id,
-                        body={"doc": update_doc},
+                        body={"doc": {
+                            **update_doc,
+                            "enrichment_source": "semantic_scholar",
+                            "enriched_at": datetime.now(timezone.utc).isoformat(),
+                        }},
                     )
                     total_enriched += 1
 

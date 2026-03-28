@@ -118,6 +118,7 @@ def get_index_mapping(embedding_dim: int) -> dict:
                     },
                 },
                 "categories": {"type": "keyword"},
+                "domains": {"type": "keyword"},
                 "primary_category": {"type": "keyword"},
                 "submitted_date": {"type": "date"},
                 "updated_date": {"type": "date"},
