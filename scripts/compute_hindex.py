@@ -62,7 +62,7 @@ async def scan_papers_with_citations(http: httpx.AsyncClient) -> dict[str, list[
     while hits:
         for h in hits:
             src = h["_source"]
-            citations = src.get("citation_stats", {}).get("total_citations", 0) or 0
+            citations = (src.get("citation_stats") or {}).get("total_citations", 0) or 0
             authors = src.get("authors", [])
             arxiv_id = src["arxiv_id"]
             total += 1

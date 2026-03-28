@@ -417,7 +417,7 @@ async def compute_hindex(http: httpx.AsyncClient) -> tuple[int, int]:
     while hits:
         for h in hits:
             src = h["_source"]
-            cites = src.get("citation_stats", {}).get("total_citations", 0) or 0
+            cites = (src.get("citation_stats") or {}).get("total_citations", 0) or 0
             for a in src.get("authors", []):
                 name = a.get("name", "").strip() if isinstance(a, dict) else str(a).strip()
                 if name:

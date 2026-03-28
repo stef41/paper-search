@@ -216,7 +216,7 @@ mismatches = 0
 for h in r["hits"]["hits"]:
     src = h["_source"]
     ids_len = len(src.get("cited_by_ids", []))
-    count = src.get("citation_stats", {}).get("total_citations", 0)
+    count = (src.get("citation_stats") or {}).get("total_citations", 0)
     if ids_len != count:
         mismatches += 1
 test("cited_by_ids length == total_citations (20 samples)", mismatches == 0,

@@ -322,7 +322,7 @@ class GraphEngine:
     def _node_matches_path_filter(src: dict, filters: dict[str, Any]) -> bool:
         """Check if a paper matches path filter criteria."""
         if "categories" in filters:
-            if not set(filters["categories"]) & set(src.get("categories", [])):
+            if not set(filters["categories"]) & set(src.get("categories") or []):
                 return False
         if "primary_category" in filters:
             if src.get("primary_category") != filters["primary_category"]:
@@ -331,7 +331,7 @@ class GraphEngine:
             if src.get("has_github") != filters["has_github"]:
                 return False
         if "min_citations" in filters:
-            cs = src.get("citation_stats", {})
+            cs = src.get("citation_stats") or {}
             tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
             if tc < filters["min_citations"]:
                 return False
@@ -532,7 +532,7 @@ class GraphEngine:
 
         for hit in resp["hits"]["hits"]:
             src = hit["_source"]
-            cats = src.get("categories", [])
+            cats = src.get("categories") or []
             cat_set.update(cats)
             nodes.append(self._make_paper_node(src, {"category_count": len(cats)}))
             # Add edges from paper → each category
@@ -921,7 +921,7 @@ class GraphEngine:
         scored_papers = []
         for hit in papers_resp["hits"]["hits"]:
             src = hit["_source"]
-            cats = src.get("categories", [])
+            cats = src.get("categories") or []
             if len(cats) < min_cats:
                 continue
 
@@ -947,7 +947,7 @@ class GraphEngine:
         cat_set: set[str] = set()
 
         for src, score, cat_count in scored_papers:
-            cats = src.get("categories", [])
+            cats = src.get("categories") or []
             cat_set.update(cats)
             nodes.append(self._make_paper_node(src, {"category_count": cat_count, "interdisciplinary_score": round(score, 4)}))
             for cat in cats:
@@ -1089,7 +1089,7 @@ class GraphEngine:
             scored.append((src, len(citing_cats), citing_cats))
 
         # Sort by number of distinct citing categories descending
-        scored.sort(key=lambda x: (-x[1], -(x[0].get("citation_stats", {}).get("total_citations", 0))))
+        scored.sort(key=lambda x: (-x[1], -(x[0].get("citation_stats") or {}.get("total_citations", 0))))
         scored = scored[:limit]
 
         nodes: list[GraphNode] = []
@@ -1098,7 +1098,7 @@ class GraphEngine:
 
         for src, citing_cat_count, citing_cats in scored:
             cites = (src.get("citation_stats") or {}).get("total_citations", 0)
-            own_cats = src.get("categories", [])
+            own_cats = src.get("categories") or []
             cat_set.update(own_cats)
             cat_set.update(citing_cats)
 
@@ -1244,7 +1244,7 @@ class GraphEngine:
             cat_counts: dict[str, int] = {}
             cat_papers: dict[str, list[str]] = defaultdict(list)
             for tp in traversed:
-                for cat in tp.get("categories", []):
+                for cat in tp.get("categories") or []:
                     cat_counts[cat] = cat_counts.get(cat, 0) + 1
                     cat_papers[cat].append(tp.get("arxiv_id", ""))
 
@@ -1268,7 +1268,7 @@ class GraphEngine:
         elif aggregate_by == "author":
             author_counts: dict[str, int] = {}
             for tp in traversed:
-                for a in tp.get("authors", []):
+                for a in tp.get("authors") or []:
                     name = a.get("name", "") if isinstance(a, dict) else str(a)
                     if name:
                         author_counts[name] = author_counts.get(name, 0) + 1
@@ -2462,7 +2462,7 @@ class GraphEngine:
         node_ids = set(paper_data.keys())
         author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
-            for a in src.get("authors", [])[:50]:
+            for a in src.get("authors") or [][:50]:
                 name = a.get("name", "") if isinstance(a, dict) else str(a)
                 if name:
                     author_papers[name].append(aid)
@@ -2513,7 +2513,7 @@ class GraphEngine:
             # Dominant category in this community
             cat_counts: Counter[str] = Counter()
             for mid in members:
-                for cat in paper_data.get(mid, {}).get("categories", []):
+                for cat in paper_data.get(mid, {}).get("categories") or []:
                     cat_counts[cat] += 1
             top_cats = [c for c, _ in cat_counts.most_common(3)]
 
@@ -2831,7 +2831,7 @@ class GraphEngine:
             comp_id = f"component_{comp_idx}"
             cat_counts: Counter[str] = Counter()
             for mid in members:
-                for cat in paper_data.get(mid, {}).get("categories", []):
+                for cat in paper_data.get(mid, {}).get("categories") or []:
                     cat_counts[cat] += 1
             top_cats = [c for c, _ in cat_counts.most_common(3)]
 
@@ -3429,7 +3429,7 @@ class GraphEngine:
             scc_id = f"scc_{idx}"
             cat_counts: Counter[str] = Counter()
             for mid in scc:
-                for cat in paper_data.get(mid, {}).get("categories", []):
+                for cat in paper_data.get(mid, {}).get("categories") or []:
                     cat_counts[cat] += 1
 
             nodes.append(GraphNode(
@@ -3752,7 +3752,7 @@ class GraphEngine:
         # Co-authorship edges
         author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
-            for a in src.get("authors", [])[:50]:
+            for a in src.get("authors") or [][:50]:
                 name = a.get("name", "") if isinstance(a, dict) else str(a)
                 if name:
                     author_papers[name].append(aid)
@@ -3843,7 +3843,7 @@ class GraphEngine:
         for idx, (cid, members) in enumerate(sorted_comms[:limit]):
             cat_counts: Counter[str] = Counter()
             for mid in members:
-                for cat in paper_data.get(mid, {}).get("categories", []):
+                for cat in paper_data.get(mid, {}).get("categories") or []:
                     cat_counts[cat] += 1
             top_cats = [c for c, _ in cat_counts.most_common(3)]
 
@@ -5324,7 +5324,7 @@ class GraphEngine:
                 adj[aid][nbr] += 1.0
         author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
-            for a in src.get("authors", [])[:50]:
+            for a in src.get("authors") or [][:50]:
                 name = a.get("name", "") if isinstance(a, dict) else str(a)
                 if name:
                     author_papers[name].append(aid)
@@ -5459,7 +5459,7 @@ class GraphEngine:
         for idx, (cid, members) in enumerate(sorted_comms[:limit]):
             cat_counts: Counter[str] = Counter()
             for mid in members:
-                for cat in paper_data.get(mid, {}).get("categories", []):
+                for cat in paper_data.get(mid, {}).get("categories") or []:
                     cat_counts[cat] += 1
             top_cats = [c for c, _ in cat_counts.most_common(3)]
             comm_node_id = f"leiden_{idx}"
@@ -5975,7 +5975,7 @@ class GraphEngine:
             # Project onto categories
             cat_papers: dict[str, set[str]] = defaultdict(set)
             for aid, src in paper_data.items():
-                for cat in src.get("categories", []):
+                for cat in src.get("categories") or []:
                     cat_papers[cat].add(aid)
 
             cat_list = sorted(cat_papers.keys(), key=lambda c: -len(cat_papers[c]))
@@ -6013,7 +6013,7 @@ class GraphEngine:
             paper_authors: dict[str, list[str]] = {}
             for aid, src in paper_data.items():
                 paper_authors[aid] = [a.get("name", "") if isinstance(a, dict) else str(a)
-                                       for a in src.get("authors", [])[:15] if a]
+                                       for a in src.get("authors") or [][:15] if a]
 
             author_coauth: Counter[tuple[str, str]] = Counter()
             for aid, authors in paper_authors.items():
@@ -6043,7 +6043,7 @@ class GraphEngine:
         else:  # papers — connected by shared categories
             paper_cats: dict[str, set[str]] = {}
             for aid, src in paper_data.items():
-                paper_cats[aid] = set(src.get("categories", []))
+                paper_cats[aid] = set(src.get("categories") or [])
 
             paper_list = sorted(paper_data.keys(), key=lambda x: -len(paper_cats.get(x, set())))
             paper_list = paper_list[:min(len(paper_list), 2000)]
@@ -6282,7 +6282,7 @@ class GraphEngine:
         if "co_authored" in used_relations:
             for aid, src in paper_cache.items():
                 names = []
-                for a in src.get("authors", [])[:50]:
+                for a in src.get("authors") or [][:50]:
                     name = a.get("name", "") if isinstance(a, dict) else str(a)
                     if name:
                         names.append(name)
@@ -6294,7 +6294,7 @@ class GraphEngine:
         _cat_papers: dict[str, list[str]] = defaultdict(list)  # category → list of paper_ids
         if "same_category" in used_relations:
             for aid, src in paper_cache.items():
-                cats = src.get("categories", [])
+                cats = src.get("categories") or []
                 _paper_cats[aid] = cats
                 for cat in cats:
                     _cat_papers[cat].append(aid)
@@ -6360,18 +6360,18 @@ class GraphEngine:
                 return False
             f = pnode.filters
             if "categories" in f:
-                if not set(f["categories"]) & set(src.get("categories", [])):
+                if not set(f["categories"]) & set(src.get("categories") or []):
                     return False
             if "primary_category" in f:
                 if src.get("primary_category") != f["primary_category"]:
                     return False
             if "min_citations" in f:
-                cs = src.get("citation_stats", {})
+                cs = src.get("citation_stats") or {}
                 tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
                 if tc < f["min_citations"]:
                     return False
             if "max_citations" in f:
-                cs = src.get("citation_stats", {})
+                cs = src.get("citation_stats") or {}
                 tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
                 if tc > f["max_citations"]:
                     return False
@@ -6416,14 +6416,14 @@ class GraphEngine:
             if not src:
                 return None
             if prop == "citations":
-                cs = src.get("citation_stats", {})
+                cs = src.get("citation_stats") or {}
                 return cs.get("total_citations", 0) if isinstance(cs, dict) else 0
             elif prop in ("date", "submitted_date"):
                 return src.get("submitted_date", "")
             elif prop == "primary_category":
                 return src.get("primary_category", "")
             elif prop == "categories":
-                return src.get("categories", [])
+                return src.get("categories") or []
             elif prop == "has_github":
                 return src.get("has_github", False)
             elif prop == "page_count":
@@ -6432,7 +6432,7 @@ class GraphEngine:
                 return src.get("title", "")
             elif prop == "authors":
                 return [a.get("name", "") if isinstance(a, dict) else str(a)
-                        for a in src.get("authors", [])]
+                        for a in src.get("authors") or []]
             return src.get(prop)
 
         def _resolve_value(ref: str, assignment: dict[str, str | None]) -> Any:
