@@ -91,6 +91,8 @@ async def _resolve_embeddings(
     redis_client = await get_redis_client()
     result: list[tuple[SemanticQuery, list[float]]] = []
     for sq in sem_list:
+        if not sq.text or not sq.text.strip():
+            continue
         emb = await get_cached_embedding(redis_client, sq.text, sq.level.value)
         if emb is None:
             emb = await asyncio.get_event_loop().run_in_executor(None, encode_text, sq.text)

@@ -78,7 +78,10 @@ async def backfill_embeddings(
             ops.append({"doc": doc})
 
         if ops:
-            await es.bulk(body=ops)
+            bulk_resp = await es.bulk(body=ops)
+            if bulk_resp.get("errors"):
+                failed = sum(1 for item in bulk_resp.get("items", []) if "error" in item.get("update", {}))
+                logger.warning("bulk_embed_errors", failed=failed, batch=len(ids))
 
         total += len(hits)
         elapsed = time.monotonic() - start_time

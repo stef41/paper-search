@@ -149,12 +149,11 @@ async def enrich_papers(
     logger.info("enrichment_start", max_papers=max_papers)
 
     # Scroll through papers that haven't been enriched yet
-    # (citation_stats.total_citations == 0 as a proxy)
     query = {
         "query": {
             "bool": {
-                "must": [
-                    {"term": {"citation_stats.total_citations": 0}},
+                "must_not": [
+                    {"exists": {"field": "enriched_at"}},
                 ],
             }
         },
