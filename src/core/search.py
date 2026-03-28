@@ -302,7 +302,7 @@ class QueryBuilder:
     def _build_knn(self) -> dict[str, Any] | list[dict[str, Any]] | None:
         boost_entries = [
             (sq, emb) for sq, emb in self._embeddings
-            if sq.mode == SemanticMode.BOOST
+            if sq.mode == SemanticMode.BOOST and sq.level != SimilarityLevel.PARAGRAPH
         ]
         if not boost_entries:
             return None
@@ -348,7 +348,7 @@ class QueryBuilder:
         """
         exclude_entries = [
             (sq, emb) for sq, emb in self._embeddings
-            if sq.mode == SemanticMode.EXCLUDE
+            if sq.mode == SemanticMode.EXCLUDE and sq.level != SimilarityLevel.PARAGRAPH
         ]
         if not exclude_entries:
             return None
@@ -487,19 +487,15 @@ class SearchEngine:
         )
 
     async def get_paper(self, arxiv_id: str) -> dict | None:
-        try:
-            resp = await self.client.search(
-                index=self.index,
-                body={"query": {"term": {"arxiv_id": arxiv_id}}, "size": 1},
-            )
-            hits = resp["hits"]["hits"]
-            if hits:
-                source = hits[0]["_source"]
-                source.pop("title_embedding", None)
-                source.pop("abstract_embedding", None)
-                source.pop("paragraph_embeddings", None)
-                return source
-            return None
-        except Exception:
-            logger.exception("get_paper_error", arxiv_id=arxiv_id)
-            return None
+        resp = await self.client.search(
+            index=self.index,
+            body={"query": {"term": {"arxiv_id": arxiv_id}}, "size": 1},
+        )
+        hits = resp["hits"]["hits"]
+        if hits:
+            source = hits[0]["_source"]
+            source.pop("title_embedding", None)
+            source.pop("abstract_embedding", None)
+            source.pop("paragraph_embeddings", None)
+            return source
+        return None

@@ -148,7 +148,10 @@ def create_app() -> FastAPI:
     # ── IP-level DDoS rate limiter (runs before everything else) ──
     _ddos_limit, _ddos_window_str = settings.ddos_rate_limit.split("/")
     _ddos_max = int(_ddos_limit)
-    _ddos_window = {"second": 1, "minute": 60, "hour": 3600}.get(_ddos_window_str, 60)
+    _window_map = {"second": 1, "minute": 60, "hour": 3600}
+    if _ddos_window_str not in _window_map:
+        raise ValueError(f"Invalid ddos_rate_limit window '{_ddos_window_str}'. Must be one of: {list(_window_map)}")
+    _ddos_window = _window_map[_ddos_window_str]
     _ip_hits: dict[str, list[float]] = defaultdict(list)
     _ip_last_sweep: float = 0.0
 

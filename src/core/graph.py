@@ -3653,7 +3653,7 @@ class GraphEngine:
                     common = na & nb
                     if common:
                         score = sum(
-                            1.0 / math.log(len(undirected.get(w, set())) + 1)
+                            1.0 / math.log(len(undirected.get(w, set())))
                             for w in common
                             if len(undirected.get(w, set())) > 1
                         )
@@ -3921,7 +3921,7 @@ class GraphEngine:
             elif mode == "out":
                 degree[aid] = len(out_edges.get(aid, set()))
             else:  # total
-                degree[aid] = len(undirected.get(aid, set()))
+                degree[aid] = len(in_edges.get(aid, set())) + len(out_edges.get(aid, set()))
 
         N = len(paper_data)
         # Normalized centrality
@@ -4321,6 +4321,7 @@ class GraphEngine:
         selected_seeds: list[str] = []
         seed_set: set[str] = set()
         marginal_gains: dict[str, float] = {}
+        prev_spread = 0.0
 
         # Pre-filter candidates (top by degree for efficiency)
         candidates = sorted(node_list, key=lambda x: -len(undirected.get(x, set())))
@@ -4343,7 +4344,8 @@ class GraphEngine:
             if best_node:
                 selected_seeds.append(best_node)
                 seed_set.add(best_node)
-                marginal_gains[best_node] = best_spread
+                marginal_gains[best_node] = best_spread - prev_spread
+                prev_spread = best_spread
 
         # Build response
         nodes: list[GraphNode] = []
@@ -4410,7 +4412,7 @@ class GraphEngine:
                 "edges_in_subgraph": sum(len(s) for s in out_edges.values()),
                 "seeds_selected": len(selected_seeds),
                 "seed_ids": selected_seeds,
-                "estimated_total_spread": round(marginal_gains.get(selected_seeds[-1], 0) if selected_seeds else 0, 2),
+                "estimated_total_spread": round(prev_spread if selected_seeds else 0, 2),
                 "influenced_papers_sampled": len(influenced_set),
                 "simulations_per_candidate": num_simulations,
             },
@@ -5311,6 +5313,7 @@ class GraphEngine:
         for aid in paper_data:
             for nbr in undirected.get(aid, set()):
                 adj[aid][nbr] += 1.0
+        author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
             for a in src.get("authors", [])[:50]:
                 name = a.get("name", "") if isinstance(a, dict) else str(a)
