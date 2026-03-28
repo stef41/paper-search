@@ -75,14 +75,42 @@ def parse_oai_record(record_xml: Any) -> dict | None:
     doi = arx.findtext("arx:doi", None, OAI_NAMESPACES)
     journal_ref = arx.findtext("arx:journal-ref", None, OAI_NAMESPACES)
 
-    # Parse dates
-    datestamp = header.findtext("oai:datestamp", "", OAI_NAMESPACES)
+    # Parse dates — prefer version dates from arXivRaw metadata over OAI datestamp
     submitted_date = None
-    if datestamp:
-        try:
-            submitted_date = datetime.fromisoformat(datestamp).replace(tzinfo=timezone.utc)
-        except ValueError:
-            pass
+    updated_date = None
+
+    versions = arx.findall("arx:version", OAI_NAMESPACES)
+    if versions:
+        # v1 date = original submission date
+        v1_date_str = versions[0].findtext("arx:date", "", OAI_NAMESPACES)
+        if v1_date_str:
+            try:
+                submitted_date = datetime.strptime(
+                    v1_date_str.strip(), "%a, %d %b %Y %H:%M:%S %Z"
+                ).replace(tzinfo=timezone.utc)
+            except ValueError:
+                pass
+        # Latest version date = updated date
+        if len(versions) > 1:
+            last_date_str = versions[-1].findtext("arx:date", "", OAI_NAMESPACES)
+            if last_date_str:
+                try:
+                    updated_date = datetime.strptime(
+                        last_date_str.strip(), "%a, %d %b %Y %H:%M:%S %Z"
+                    ).replace(tzinfo=timezone.utc)
+                except ValueError:
+                    pass
+
+    # Fallback to OAI datestamp if version dates unavailable
+    if submitted_date is None:
+        datestamp = header.findtext("oai:datestamp", "", OAI_NAMESPACES)
+        if datestamp:
+            try:
+                submitted_date = datetime.fromisoformat(datestamp).replace(tzinfo=timezone.utc)
+            except ValueError:
+                pass
+    if updated_date is None:
+        updated_date = submitted_date
 
     # Parse authors
     authors_str = arx.findtext("arx:authors", "", OAI_NAMESPACES)
@@ -116,7 +144,7 @@ def parse_oai_record(record_xml: Any) -> dict | None:
         "categories": categories,
         "primary_category": categories[0] if categories else None,
         "submitted_date": submitted_date.isoformat() if submitted_date else None,
-        "updated_date": submitted_date.isoformat() if submitted_date else None,
+        "updated_date": updated_date.isoformat() if updated_date else None,
         "published_date": None,
         "doi": doi,
         "journal_ref": journal_ref,

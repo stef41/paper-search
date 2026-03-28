@@ -101,7 +101,7 @@ async def main():
 
                 # Author h-indices
                 authors = s2_data.get("authors") or []
-                h_indices = [a.get("hIndex") for a in authors if a.get("hIndex")]
+                h_indices = [a.get("hIndex") for a in authors if a.get("hIndex") is not None]
                 median_h = statistics.median(h_indices) if h_indices else None
 
                 refs = s2_data.get("references") or []
@@ -138,7 +138,7 @@ async def main():
                         "references_stats": {
                             "total_references": len(refs),
                         },
-                        "first_author_h_index": h_indices[0] if h_indices else None,
+                        "first_author_h_index": authors[0].get("hIndex") if authors else None,
                         "reference_ids": ref_arxiv_ids,
                         "cited_by_ids": cited_by_arxiv_ids,
                     }

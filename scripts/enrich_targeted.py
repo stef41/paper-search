@@ -115,7 +115,7 @@ async def main():
                 top_citing = sorted(citing_cats.keys(), key=lambda k: -citing_cats[k])[:10]
 
                 # Author h-indices
-                h_indices = [a.get("hIndex") for a in authors if a.get("hIndex")]
+                h_indices = [a.get("hIndex") for a in authors if a.get("hIndex") is not None]
                 median_h = statistics.median(h_indices) if h_indices else None
 
                 # Reference arxiv IDs
@@ -141,7 +141,7 @@ async def main():
                 update = {"doc": {
                     "citation_stats": {"total_citations": cites, "top_citing_categories": top_citing, "median_h_index_citing_authors": median_h},
                     "references_stats": {"total_references": len(refs)},
-                    "first_author_h_index": h_indices[0] if h_indices else None,
+                    "first_author_h_index": authors[0].get("hIndex") if authors else None,
                     "reference_ids": ref_ids,
                     "cited_by_ids": cited_by_ids,
                 }}

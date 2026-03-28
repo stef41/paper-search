@@ -188,9 +188,10 @@ def _parse_date(date_str: str) -> str:
             continue
 
     # Fallback: try isoformat
-    return datetime.fromisoformat(date_str.strip()).replace(
-        tzinfo=timezone.utc
-    ).isoformat()
+    dt = datetime.fromisoformat(date_str.strip())
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).isoformat()
+    return dt.replace(tzinfo=timezone.utc).isoformat()
 
 
 def stream_kaggle_file(

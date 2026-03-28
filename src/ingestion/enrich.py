@@ -71,27 +71,26 @@ def compute_enrichment(s2_data: dict) -> dict:
     # Author h-index data
     authors = s2_data.get("authors", [])
     if authors:
+        result["first_author_h_index"] = authors[0].get("hIndex")
         h_indices = [a.get("hIndex") for a in authors if a.get("hIndex") is not None]
-        if h_indices:
-            result["first_author_h_index"] = h_indices[0] if h_indices else None
 
     # Citation stats
     citation_count = s2_data.get("citationCount", 0) or 0
     citations = s2_data.get("citations", []) or []
 
-    citing_h_indices = []
+    citing_citation_counts = []
     citing_categories = []
     for cit in citations:
         if isinstance(cit, dict):
             cc = cit.get("citationCount")
             if cc is not None:
-                citing_h_indices.append(cc)
+                citing_citation_counts.append(cc)
             fos = cit.get("fieldsOfStudy") or []
             citing_categories.extend(fos)
 
-    median_h = None
-    if citing_h_indices:
-        median_h = statistics.median(citing_h_indices)
+    median_citing_citations = None
+    if citing_citation_counts:
+        median_citing_citations = statistics.median(citing_citation_counts)
 
     # Top citing categories
     cat_counts: dict[str, int] = {}
@@ -102,7 +101,7 @@ def compute_enrichment(s2_data: dict) -> dict:
     result["citation_stats"] = {
         "total_citations": citation_count,
         "avg_citation_age_years": None,  # Would need publication dates of citing papers
-        "median_h_index_citing_authors": median_h,
+        "median_h_index_citing_authors": median_citing_citations,
         "top_citing_categories": top_cats,
     }
 
