@@ -163,7 +163,12 @@ async def main():
 
             if bulk_body:
                 bulk_data = "\n".join(bulk_body) + "\n"
-                await http.post(f"{ES_URL}/{INDEX}/_bulk", content=bulk_data.encode(), headers={"Content-Type": "application/x-ndjson"})
+                br = await http.post(f"{ES_URL}/{INDEX}/_bulk", content=bulk_data.encode(), headers={"Content-Type": "application/x-ndjson"})
+                if br.status_code != 200:
+                    print(f"  WARNING: bulk update returned HTTP {br.status_code}")
+                elif br.json().get("errors"):
+                    errs = sum(1 for it in br.json().get("items", []) if "error" in it.get("update", {}))
+                    print(f"  WARNING: {errs} bulk update errors")
 
             total_enriched += batch_enriched
             print(f"  Batch done: {batch_enriched} enriched")

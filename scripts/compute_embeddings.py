@@ -102,19 +102,25 @@ def main():
                 bulk_lines.append(json.dumps({"doc": doc}))
 
                 if len(bulk_lines) >= BULK_SIZE * 2:
-                    http.post(
+                    br = http.post(
                         f"{ES_URL}/{INDEX}/_bulk",
                         content=("\n".join(bulk_lines) + "\n").encode(),
                         headers={"Content-Type": "application/x-ndjson"},
                     )
+                    if br.json().get("errors"):
+                        errs = sum(1 for it in br.json().get("items", []) if "error" in it.get("update", {}))
+                        print(f"  WARNING: {errs} bulk update errors")
                     bulk_lines = []
 
             if bulk_lines:
-                http.post(
+                br = http.post(
                     f"{ES_URL}/{INDEX}/_bulk",
                     content=("\n".join(bulk_lines) + "\n").encode(),
                     headers={"Content-Type": "application/x-ndjson"},
                 )
+                if br.json().get("errors"):
+                    errs = sum(1 for it in br.json().get("items", []) if "error" in it.get("update", {}))
+                    print(f"  WARNING: {errs} bulk update errors")
 
             total += len(hits)
             elapsed = time.time() - t0
