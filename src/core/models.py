@@ -239,8 +239,16 @@ class SearchHit(BaseModel):
     github_urls: list[str] = Field(default_factory=list)
     first_author: str | None = None
     first_author_h_index: int | None = None
+    comments: str | None = None
+    pdf_url: str | None = None
+    abstract_url: str | None = None
+    domains: list[str] = Field(default_factory=list)
+    reference_ids: list[str] = Field(default_factory=list)
+    cited_by_ids: list[str] = Field(default_factory=list)
     citation_stats: CitationStats = Field(default_factory=CitationStats)
     references_stats: ReferencesStats = Field(default_factory=ReferencesStats)
+    enrichment_source: str | None = None
+    enriched_at: datetime | None = None
     score: float | None = None
     highlights: dict[str, list[str]] | None = None
 

@@ -6460,11 +6460,15 @@ class GraphEngine:
             """Check all WHERE conditions against current assignment."""
             for wc in where_conditions:
                 # Only check conditions where all referenced aliases are assigned
+                skip = False
                 for ref in (wc.left, wc.right):
                     if "." in ref:
                         alias_part = ref.split(".", 1)[0]
                         if alias_part in alias_order and alias_part not in assignment:
-                            continue  # Skip: alias not yet assigned
+                            skip = True
+                            break
+                if skip:
+                    continue
 
                 left_val = _resolve_value(wc.left, assignment)
                 right_val = _resolve_value(wc.right, assignment)
@@ -7066,12 +7070,12 @@ class GraphEngine:
             projected_sr_kwargs["has_github"] = sf.has_github
         if sf.date_from or sf.date_to:
             from src.core.models import DateRange
-            dt = DateRange()
+            dt_kwargs: dict[str, Any] = {}
             if sf.date_from:
-                dt.gte = sf.date_from
+                dt_kwargs["gte"] = sf.date_from
             if sf.date_to:
-                dt.lte = sf.date_to
-            projected_sr_kwargs["submitted_date"] = dt
+                dt_kwargs["lte"] = sf.date_to
+            projected_sr_kwargs["submitted_date"] = DateRange(**dt_kwargs)
         projected_sr = SearchRequest(**projected_sr_kwargs)
 
         handler = {
