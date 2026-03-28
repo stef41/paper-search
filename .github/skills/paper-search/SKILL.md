@@ -1,6 +1,6 @@
 ---
 name: paper-search
-description: "Search the ArXiv paper database (~3M papers). Use when: finding papers by author/topic/category/date, looking up specific papers, exploring research trends, filtering by citations or GitHub availability, fuzzy/regex search, combining multiple filters, graph queries (52 types: co-authorship, citation networks, author influence, temporal evolution, paper similarity, domain collaboration, topic evolution, GitHub landscape, bibliographic coupling, co-citation, interdisciplinary detection, category flows, author bridges, multihop citation, shortest citation path, PageRank, community detection, citation patterns, connected components, weighted shortest path, betweenness centrality, closeness centrality, strongly connected components, topological sort, link prediction, Louvain community detection, degree centrality, eigenvector centrality, k-core decomposition, articulation points, influence maximization, HITS, harmonic centrality, Katz centrality, all shortest paths, k-shortest paths, random walk, triangle count, graph diameter, Leiden community, bridge edges, min-cut, minimum spanning tree, node similarity, bipartite projection, Adamic-Adar index, pattern matching, pipeline composition, subgraph projection). Invoked by /paper-search."
+description: "Search the ArXiv paper database (~3M papers). Use when: finding papers by author/topic/category/date, looking up specific papers, exploring research trends, filtering by citations or GitHub availability, fuzzy/regex search, combining multiple filters, graph queries (55 types: co-authorship, citation networks, author influence, temporal evolution, paper similarity, domain collaboration, topic evolution, GitHub landscape, bibliographic coupling, co-citation, interdisciplinary detection, category flows, author bridges, multihop citation, shortest citation path, PageRank, community detection, citation patterns, connected components, weighted shortest path, betweenness centrality, closeness centrality, strongly connected components, topological sort, link prediction, Louvain community detection, degree centrality, eigenvector centrality, k-core decomposition, articulation points, influence maximization, HITS, harmonic centrality, Katz centrality, all shortest paths, k-shortest paths, random walk, triangle count, graph diameter, Leiden community, bridge edges, min-cut, minimum spanning tree, node similarity, bipartite projection, Adamic-Adar index, pattern matching, pipeline composition, subgraph projection, general traversal, graph union, graph intersection). Invoked by /paper-search."
 ---
 
 # PaperPilot — ArXiv Search Skill
@@ -17,7 +17,7 @@ Search a live Elasticsearch index of ~2.99 million ArXiv papers (all categories,
 | Method | Endpoint | Auth | Purpose |
 |--------|----------|------|---------|
 | POST | `/search` | Yes | Full-featured search |
-| POST | `/graph` | Yes | Graph queries (52 types: citation networks, co-authorship, similarity, temporal, influence, domain collaboration, graph-DB algorithms, pattern matching, pipeline composition, subgraph projection) |
+| POST | `/graph` | Yes | Graph queries (55 types: citation networks, co-authorship, similarity, temporal, influence, domain collaboration, graph-DB algorithms, pattern matching, pipeline composition, subgraph projection, general traversal, graph set operations) |
 | GET | `/stats` | Yes | Database statistics |
 | GET | `/paper/{arxiv_id}` | Yes | Single paper lookup |
 | GET | `/health` | No | Health check |
@@ -393,7 +393,10 @@ POST `/graph` with JSON body. The `graph` field is required; all other fields ar
           | "cocitation"               // papers frequently cited together
           | "pattern_match"           // declarative structural pattern matching (like Cypher MATCH)
           | "pipeline"                // chain multiple graph algorithms sequentially
-          | "subgraph_projection",    // define precise subgraph, then run any algorithm on it
+          | "subgraph_projection"    // define precise subgraph, then run any algorithm on it
+          | "traverse"               // general BFS traversal with predicates and stop conditions
+          | "graph_union"            // union of two sub-query results
+          | "graph_intersection",    // intersection of two sub-query results
 
     // ── Common parameters ──
     "seed_author": "Author Name",       // for coauthor_network, author_influence, author_topic_evolution
@@ -471,6 +474,29 @@ POST `/graph` with JSON body. The `graph` field is required; all other fields ar
     },
     "subgraph_algorithm": "pagerank",     // any of the 49 base graph algorithms
     "subgraph_params": {"damping_factor": 0.85},  // params for the target algorithm
+
+    // ── General traversal (type 53) ──
+    "traverse_direction": "outgoing",     // outgoing (references), incoming (citations), both
+    "traverse_predicate": {               // filter nodes during expansion
+      "min_citations": 10,
+      "categories": ["cs.AI"],
+      "has_github": true,
+      "date_from": "2024-01-01",
+      "date_to": "2025-01-01"
+    },
+    "traverse_until": {                   // stop conditions
+      "max_nodes": 100,                   // max nodes to collect (default: limit*3)
+      "max_depth": 5,                     // max BFS depth (default: max_hops)
+      "category": "cs.CL",               // stop when reaching this category
+      "min_citations": 50                 // stop when reaching a paper with >= N citations
+    },
+    "collect_edges": true,                // include edges in result (default: true)
+
+    // ── Graph set operations (types 54-55) ──
+    "set_queries": [                      // two sub-queries to union/intersect
+      {"type": "pagerank", "limit": 50},
+      {"type": "community_detection", "limit": 50}
+    ],
 
     "limit": 50                          // max results (1-200)
   },
@@ -601,6 +627,9 @@ POST `/graph` with JSON body. The `graph` field is required; all other fields ar
 | `pattern_match` | Declarative structural pattern matching (like Cypher MATCH) | `pattern_nodes`, `pattern_edges`, `limit` | papers matching pattern | relation per pattern edge |
 | `pipeline` | Chain multiple graph algorithms sequentially | `pipeline_steps`, `limit` | final step output nodes | final step output edges |
 | `subgraph_projection` | Define precise subgraph then run any algorithm on it | `subgraph_filter`, `subgraph_algorithm`, `subgraph_params`, `limit` | algorithm output nodes | algorithm output edges |
+| `traverse` | General BFS traversal with predicates and stop conditions | `seed_arxiv_id`, `traverse_direction`, `traverse_predicate`, `traverse_until`, `collect_edges`, `max_hops` | papers (with depth) | paper→paper (cites) |
+| `graph_union` | Union of two sub-query results (all nodes/edges from both) | `set_queries` (2 sub-queries) | merged nodes | merged edges |
+| `graph_intersection` | Intersection of two sub-query results (only shared nodes) | `set_queries` (2 sub-queries) | shared nodes | shared edges |
 
 ## Graph Query Examples
 
@@ -1192,6 +1221,70 @@ curl -s https://arxiv-paperpilot.serveousercontent.com/graph \
   }'
 ```
 
+### 52. General traversal: BFS from a paper following cited_by with filters
+
+```bash
+curl -s https://arxiv-paperpilot.serveousercontent.com/graph \
+  -H "X-API-Key: changeme-key-1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "graph": {
+      "type": "traverse",
+      "seed_arxiv_id": "2301.00001",
+      "traverse_direction": "outgoing",
+      "max_hops": 5,
+      "traverse_predicate": {
+        "categories": ["cs.AI"],
+        "min_citations": 5
+      },
+      "traverse_until": {
+        "max_nodes": 100,
+        "max_depth": 4
+      },
+      "collect_edges": true,
+      "limit": 50
+    }
+  }'
+```
+
+### 53. Graph union: combine PageRank and HITS top results
+
+```bash
+curl -s https://arxiv-paperpilot.serveousercontent.com/graph \
+  -H "X-API-Key: changeme-key-1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "graph": {
+      "type": "graph_union",
+      "set_queries": [
+        {"type": "pagerank", "limit": 20},
+        {"type": "hits", "limit": 20}
+      ],
+      "limit": 30
+    },
+    "query": "large language model"
+  }'
+```
+
+### 54. Graph intersection: papers ranked highly by BOTH betweenness and closeness
+
+```bash
+curl -s https://arxiv-paperpilot.serveousercontent.com/graph \
+  -H "X-API-Key: changeme-key-1" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "graph": {
+      "type": "graph_intersection",
+      "set_queries": [
+        {"type": "betweenness_centrality", "limit": 50},
+        {"type": "closeness_centrality", "limit": 50}
+      ],
+      "limit": 20
+    },
+    "query": "neural network"
+  }'
+```
+
 ### Example 22 — Graph + Semantic Similarity (co-authors working on topics similar to "diffusion models for protein folding")
 
 ```bash
@@ -1308,6 +1401,9 @@ When presenting results to the user:
 - For pattern_match: describe the matched structural patterns, number of matches found, and how nodes relate via the declared pattern edges
 - For pipeline: describe each step's contribution, how the dataset narrowed at each stage, and the final output
 - For subgraph_projection: describe the projected subgraph (size, filters applied, edge direction) and the algorithm results within it
+- For traverse: describe the BFS traversal path, depth reached, stop condition triggered, and node/edge counts
+- For graph_union: describe what each sub-query contributed and the combined result
+- For graph_intersection: describe the overlap between sub-queries and what the shared nodes have in common
 
 ## Constraints
 
