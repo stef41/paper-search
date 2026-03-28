@@ -167,8 +167,6 @@ class GraphEngine:
         self.client = client
         self.index = index
         self.F = fields or ARXIV_FIELDS
-        self.client = client
-        self.index = index
 
     async def execute(
         self,
@@ -521,7 +519,7 @@ class GraphEngine:
             "_source": ["arxiv_id", "title", "categories", "primary_category",
                          "authors", "submitted_date", "citation_stats"],
         }
-        resp = await self._do_search(body, sr, emb)
+        resp = await self._do_search(body) if sem_ids is not None else await self._do_search(body, sr, emb)
 
         nodes: list[GraphNode] = []
         edges: list[GraphEdge] = []
@@ -912,7 +910,7 @@ class GraphEngine:
             "_source": ["arxiv_id", "title", "categories", "primary_category",
                          "authors", "submitted_date", "citation_stats"],
         }
-        papers_resp = await self._do_search(body, sr, emb)
+        papers_resp = await self._do_search(body) if sem_ids is not None else await self._do_search(body, sr, emb)
 
         # Score each paper by median rarity of its category pairs
         scored_papers = []
@@ -7348,7 +7346,7 @@ class GraphEngine:
                     metadata={"error": f"Sub-query {i + 1}: {sub_gq.type.value} cannot be nested inside {mode}"},
                 )
             try:
-                sub_result = await self.execute(sub_gq, sr, emb)
+                sub_result = await self.execute(sub_gq, sr, embeddings=self._embeddings)
             except Exception as e:
                 return GraphResponse(
                     nodes=[], edges=[], total=0, took_ms=0,
