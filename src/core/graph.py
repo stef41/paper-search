@@ -890,7 +890,7 @@ class GraphEngine:
                 # Jaccard-like co-occurrence frequency
                 pair = (cat_a, cat_b)
                 co_count = co_bucket["doc_count"]
-                union = cat_doc_count.get(cat_a, 1) + cat_doc_count.get(cat_b, co_count) - co_count
+                union = cat_doc_count.get(cat_a, 1) + cat_doc_count.get(cat_b, 1) - co_count
                 pair_freq[pair] = co_count / max(union, 1)
 
         # Step 2: find papers with multi-category tags, score by rarity
@@ -2656,9 +2656,17 @@ class GraphEngine:
             for hub_id, degree in in_degree.most_common(limit):
                 if degree < 2:
                     break
-                _ensure_node(hub_id)
-                nodes[-1].properties["pattern_role"] = "hub"
-                nodes[-1].properties["in_degree"] = degree
+                if hub_id not in seen_papers:
+                    _ensure_node(hub_id)
+                    nodes[-1].properties["pattern_role"] = "hub"
+                    nodes[-1].properties["in_degree"] = degree
+                else:
+                    # Already added — find and update in-place
+                    for _n in nodes:
+                        if _n.id == hub_id:
+                            _n.properties["pattern_role"] = "hub"
+                            _n.properties["in_degree"] = degree
+                            break
                 for a in node_ids:
                     if hub_id in cites.get(a, set()):
                         _ensure_node(a)

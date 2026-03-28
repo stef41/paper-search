@@ -29,7 +29,7 @@ import json
 import os
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -174,7 +174,7 @@ async def openalex_fetch_refs_batch(
         await resolve_openalex_ids(http, uncached, email)
 
     # Build ES bulk update — ONLY reference_ids, NO citation counts
-    now_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     bulk_body: list[str] = []
     found = 0
     total_refs = 0
@@ -236,7 +236,7 @@ async def run_openalex(
             "_source": ["arxiv_id"],
         }
     elif mode == "stale":
-        cutoff = (datetime.utcnow() - timedelta(days=stale_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=stale_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
         query = {
             "query": {
                 "bool": {
@@ -253,7 +253,7 @@ async def run_openalex(
             "_source": ["arxiv_id"],
         }
     elif mode == "retry_not_found":
-        cutoff = (datetime.utcnow() - timedelta(days=stale_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=stale_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
         query = {
             "query": {
                 "bool": {
@@ -533,7 +533,7 @@ async def main():
     args = parser.parse_args()
 
     t0 = time.time()
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     print("=" * 70)
     print(f"ENRICHMENT PIPELINE — {now}")
     print("  Citation counts: 100% local (inverted reference graph)")
