@@ -91,3 +91,31 @@ def validate_search_request(request: Any) -> None:
             status_code=400,
             detail="Cannot paginate beyond 50200 results. Use narrower filters.",
         )
+
+    # Validate range filter inversions
+    for min_f, max_f, name in [
+        ("min_citations", "max_citations", "citations"),
+        ("min_h_index", "max_h_index", "h_index"),
+        ("min_page_count", "max_page_count", "page_count"),
+    ]:
+        min_val = getattr(request, min_f, None)
+        max_val = getattr(request, max_f, None)
+        if min_val is not None and max_val is not None and min_val > max_val:
+            raise HTTPException(
+                status_code=400,
+                detail=f"min_{name} ({min_val}) cannot exceed max_{name} ({max_val})",
+            )
+
+    # KNN (semantic) search caps at k=100; deep pagination silently loses results
+    KNN_K_CAP = 100
+    has_semantic = getattr(request, "semantic", None) is not None
+    if has_semantic and request.offset + request.limit > KNN_K_CAP:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Semantic search pagination limited to {KNN_K_CAP} results. "
+                f"offset ({request.offset}) + limit ({request.limit}) = "
+                f"{request.offset + request.limit} exceeds this cap. "
+                f"Use narrower filters or reduce offset."
+            ),
+        )

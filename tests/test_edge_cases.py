@@ -157,14 +157,13 @@ class TestEdgeCases:
     @pytest.mark.edge
     @pytest.mark.integration
     def test_impossible_page_range(self, client):
-        """min > max should return no results."""
+        """min > max should return 400."""
         resp = client.post(
             "/search",
             json={"min_page_count": 100, "max_page_count": 5},
             headers=auth_headers(),
         )
-        assert resp.status_code == 200
-        assert resp.json()["total"] == 0
+        assert resp.status_code == 400
 
     @pytest.mark.edge
     @pytest.mark.integration

@@ -147,8 +147,10 @@ class TestSearchRequestValidation:
 
     @pytest.mark.unit
     def test_semantic_weight_boundaries(self):
-        SemanticQuery(text="test", weight=0.0)
+        SemanticQuery(text="test", weight=0.01)
         SemanticQuery(text="test", weight=10.0)
+        with pytest.raises(ValidationError):
+            SemanticQuery(text="test", weight=0.0)
         with pytest.raises(ValidationError):
             SemanticQuery(text="test", weight=-1.0)
         with pytest.raises(ValidationError):

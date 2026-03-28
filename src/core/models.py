@@ -101,7 +101,7 @@ class SemanticMode(str, Enum):
 class SemanticQuery(BaseModel):
     text: str = Field(..., max_length=2000)
     level: SimilarityLevel = SimilarityLevel.ABSTRACT
-    weight: float = Field(default=1.0, ge=0.0, le=10.0)
+    weight: float = Field(default=1.0, gt=0.0, le=10.0)
     mode: SemanticMode = SemanticMode.BOOST
 
 
@@ -168,6 +168,7 @@ class SearchRequest(BaseModel):
     # Boolean / match control
     minimum_should_match: str | None = Field(
         default=None,
+        pattern=r"^\d+%?$",
         description="ES minimum_should_match spec, e.g. '2', '75%'"
     )
     operator: str = Field(default="or", pattern="^(and|or)$")
