@@ -89,7 +89,7 @@ class FieldMapping:
                 self.node_metrics, self.outgoing_edges, self.incoming_edges]
 
     def extract_id(self, src: dict) -> str:
-        return src[self.node_id]
+        return src.get(self.node_id, "")
 
     def extract_label(self, src: dict) -> str:
         return src.get(self.node_label, src.get(self.node_id, ""))
@@ -531,7 +531,7 @@ class GraphEngine:
             nodes.append(self._make_paper_node(src, {"category_count": len(cats)}))
             # Add edges from paper → each category
             for cat in cats:
-                edges.append(GraphEdge(source=src["arxiv_id"], target=cat, relation="in_category"))
+                edges.append(GraphEdge(source=src.get("arxiv_id", ""), target=cat, relation="in_category"))
 
         # Add category nodes
         for cat in cat_set:
@@ -946,7 +946,7 @@ class GraphEngine:
             nodes.append(self._make_paper_node(src, {"category_count": cat_count, "interdisciplinary_score": round(score, 4)}))
             for cat in cats:
                 edges.append(GraphEdge(
-                    source=src["arxiv_id"], target=cat, relation="in_category",
+                    source=src.get("arxiv_id", ""), target=cat, relation="in_category",
                 ))
 
         for cat in cat_set:
@@ -1100,12 +1100,12 @@ class GraphEngine:
             # Edges: paper → its own categories
             for cat in own_cats:
                 edges.append(GraphEdge(
-                    source=src["arxiv_id"], target=cat, relation="in_category",
+                    source=src.get("arxiv_id", ""), target=cat, relation="in_category",
                 ))
             # Edges: paper ← citing categories (shows where citations come from)
             for cat in citing_cats:
                 edges.append(GraphEdge(
-                    source=cat, target=src["arxiv_id"], relation="cited_from_category",
+                    source=cat, target=src.get("arxiv_id", ""), relation="cited_from_category",
                 ))
 
         # Add category nodes
@@ -1234,7 +1234,7 @@ class GraphEngine:
             for tp in traversed:
                 for cat in tp.get("categories", []):
                     cat_counts[cat] = cat_counts.get(cat, 0) + 1
-                    cat_papers[cat].append(tp["arxiv_id"])
+                    cat_papers[cat].append(tp.get("arxiv_id", ""))
 
             sorted_cats = sorted(cat_counts.items(), key=lambda x: -x[1])[:limit]
             for cat, count in sorted_cats:
@@ -1372,14 +1372,14 @@ class GraphEngine:
         linked_map: dict[str, dict] = {}
         for hit in linked_resp["hits"]["hits"]:
             s = hit["_source"]
-            linked_map[s["arxiv_id"]] = s
+            linked_map[s.get("arxiv_id", "")] = s
 
         nodes: list[GraphNode] = []
         edges: list[GraphEdge] = []
         seen: set[str] = set()
 
         for sp in seed_papers:
-            aid = sp["arxiv_id"]
+            aid = sp.get("arxiv_id", "")
             if aid not in seen:
                 seen.add(aid)
                 nodes.append(self._make_paper_node(sp, {"role": "seed"}))
@@ -2110,8 +2110,8 @@ class GraphEngine:
         seen: dict[str, int] = {}  # arxiv_id → hop depth
 
         def _add_paper(src: dict, hop: int) -> None:
-            aid = src["arxiv_id"]
-            if aid in seen:
+            aid = src.get("arxiv_id", "")
+            if not aid or aid in seen:
                 return
             seen[aid] = hop
             nodes.append(self._make_paper_node(src, {"hop": hop}))
@@ -2121,7 +2121,7 @@ class GraphEngine:
         for hit in seed_resp["hits"]["hits"]:
             src = hit["_source"]
             _add_paper(src, 0)
-            current_frontier[src["arxiv_id"]] = src
+            current_frontier[src.get("arxiv_id", "")] = src
 
         # Walk hops
         for hop in range(1, max_hops + 1):
@@ -2151,7 +2151,7 @@ class GraphEngine:
             for hit in hop_resp["hits"]["hits"]:
                 src = hit["_source"]
                 _add_paper(src, hop)
-                next_frontier[src["arxiv_id"]] = src
+                next_frontier[src.get("arxiv_id", "")] = src
 
             current_frontier = next_frontier
             if len(nodes) >= limit * 10:
@@ -2212,8 +2212,9 @@ class GraphEngine:
             result: dict[str, dict] = {}
             for hit in resp["hits"]["hits"]:
                 s = hit["_source"]
-                result[s["arxiv_id"]] = s
-                paper_cache[s["arxiv_id"]] = s
+                aid = s.get("arxiv_id", "")
+                result[aid] = s
+                paper_cache[aid] = s
             return result
 
         # Pre-fetch source and target
@@ -2740,7 +2741,7 @@ class GraphEngine:
         paper_data: dict[str, dict] = {}
         for hit in resp["hits"]["hits"]:
             s = hit["_source"]
-            paper_data[s["arxiv_id"]] = s
+            paper_data[s.get("arxiv_id", "")] = s
 
         node_ids = set(paper_data.keys())
         # Build undirected adjacency
@@ -2900,9 +2901,11 @@ class GraphEngine:
                         "_source": _FIELDS,
                     },
                 ) for batch in batches
-            ))
+            ), return_exceptions=True)
             for nbr_resp in results:
-                for hit in nbr_resp["hits"]["hits"]:
+                if isinstance(nbr_resp, BaseException):
+                    continue
+                for hit in nbr_resp.get("hits", {}).get("hits", []):
                     s = hit["_source"]
                     nid = F.extract_id(s)
                     if nid not in paper_data:
@@ -2998,7 +3001,7 @@ class GraphEngine:
                 })
                 for hit in resp["hits"]["hits"]:
                     s = hit["_source"]
-                    paper_cache[s["arxiv_id"]] = s
+                    paper_cache[s.get("arxiv_id", "")] = s
             return {i: paper_cache[i] for i in ids if i in paper_cache}
 
         # Fetch source and target
@@ -3948,6 +3951,8 @@ class GraphEngine:
         # Initialize scores uniformly
         scores = [1.0 / N] * N
 
+        iteration = 0
+        diff = 0.0
         for iteration in range(max_iter):
             new_scores = [0.0] * N
             for i, aid in enumerate(node_list):
@@ -5283,6 +5288,7 @@ class GraphEngine:
         strength: dict[str, float] = {n: sum(adj[n].values()) for n in node_list}
         comm: dict[str, int] = {n: i for i, n in enumerate(node_list)}
 
+        iteration = 0
         for iteration in range(max_iter):
             # Phase 1: Local moving (same as Louvain)
             moved = False
@@ -6150,7 +6156,7 @@ class GraphEngine:
         paper_cache: dict[str, dict] = {}
         for hit in resp["hits"]["hits"]:
             s = hit["_source"]
-            paper_cache[s["arxiv_id"]] = s
+            paper_cache[s.get("arxiv_id", "")] = s
 
         if not paper_cache:
             return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
@@ -6185,11 +6191,13 @@ class GraphEngine:
                         "_source": _FIELDS,
                     },
                 ) for batch in batches
-            ))
+            ), return_exceptions=True)
             for nbr_resp in results:
-                for hit in nbr_resp["hits"]["hits"]:
+                if isinstance(nbr_resp, BaseException):
+                    continue
+                for hit in nbr_resp.get("hits", {}).get("hits", []):
                     s = hit["_source"]
-                    paper_cache[s["arxiv_id"]] = s
+                    paper_cache[s.get("arxiv_id", "")] = s
 
         # ── Step 3: Build adjacency structures ──
         out_edges: dict[str, set[str]] = defaultdict(set)
@@ -6712,6 +6720,9 @@ class GraphEngine:
                 GraphQueryType.ADAMIC_ADAR_INDEX: self._adamic_adar_index,
                 GraphQueryType.PATTERN_MATCH: self._pattern_match,
                 GraphQueryType.SUBGRAPH_PROJECTION: self._subgraph_projection,
+                GraphQueryType.TRAVERSE: self._traverse,
+                GraphQueryType.GRAPH_UNION: self._graph_union,
+                GraphQueryType.GRAPH_INTERSECTION: self._graph_intersection,
             }.get(step_type)
 
             if handler is None:
@@ -6819,7 +6830,14 @@ class GraphEngine:
             GraphQueryType.ADAMIC_ADAR_INDEX: self._adamic_adar_index,
             GraphQueryType.PATTERN_MATCH: self._pattern_match,
             GraphQueryType.SUBGRAPH_PROJECTION: self._subgraph_projection,
+            GraphQueryType.TRAVERSE: self._traverse,
+            GraphQueryType.GRAPH_UNION: self._graph_union,
+            GraphQueryType.GRAPH_INTERSECTION: self._graph_intersection,
         }.get(final_type)
+
+        if final_handler is None:
+            return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
+                                 metadata={"error": f"No handler for final step type: {last_step.type}"})
 
         final_result = await final_handler(final_gq, None, None)
 
@@ -6931,7 +6949,7 @@ class GraphEngine:
         paper_data: dict[str, dict] = {}
         for hit in resp["hits"]["hits"]:
             s = hit["_source"]
-            paper_data[s["arxiv_id"]] = s
+            paper_data[s.get("arxiv_id", "")] = s
 
         if not paper_data:
             return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
@@ -6968,11 +6986,13 @@ class GraphEngine:
                     body={"query": nbr_query, "size": len(batch), "_source": _FIELDS},
                 )
             if fetch_batches:
-                batch_results = await asyncio.gather(*(_fetch_subgraph_batch(b) for b in fetch_batches))
+                batch_results = await asyncio.gather(*(_fetch_subgraph_batch(b) for b in fetch_batches), return_exceptions=True)
                 for nbr_resp in batch_results:
-                    for hit in nbr_resp["hits"]["hits"]:
+                    if isinstance(nbr_resp, BaseException):
+                        continue
+                    for hit in nbr_resp.get("hits", {}).get("hits", []):
                         s = hit["_source"]
-                        paper_data[s["arxiv_id"]] = s
+                        paper_data[s.get("arxiv_id", "")] = s
 
         # ── Step 3: Filter edges by direction ──
         # Build edge structures respecting the direction filter
@@ -7063,6 +7083,9 @@ class GraphEngine:
             GraphQueryType.NODE_SIMILARITY: self._node_similarity,
             GraphQueryType.BIPARTITE_PROJECTION: self._bipartite_projection,
             GraphQueryType.ADAMIC_ADAR_INDEX: self._adamic_adar_index,
+            GraphQueryType.TRAVERSE: self._traverse,
+            GraphQueryType.GRAPH_UNION: self._graph_union,
+            GraphQueryType.GRAPH_INTERSECTION: self._graph_intersection,
         }.get(algo_type)
 
         if handler is None:
@@ -7205,9 +7228,11 @@ class GraphEngine:
                             "_source": _FIELDS,
                         },
                     ) for batch in batches
-                ))
+                ), return_exceptions=True)
                 for br in batch_results:
-                    for hit in br["hits"]["hits"]:
+                    if isinstance(br, BaseException):
+                        continue
+                    for hit in br.get("hits", {}).get("hits", []):
                         s = hit["_source"]
                         paper_cache[F.extract_id(s)] = s
 
@@ -7281,7 +7306,13 @@ class GraphEngine:
                     nodes=[], edges=[], total=0, took_ms=0,
                     metadata={"error": f"Invalid sub-query {i + 1}: {e}"},
                 )
-            sub_result = await self.execute(sub_gq, sr, emb)
+            try:
+                sub_result = await self.execute(sub_gq, sr, emb)
+            except Exception as e:
+                return GraphResponse(
+                    nodes=[], edges=[], total=0, took_ms=0,
+                    metadata={"error": f"Sub-query {i + 1} failed: {e}"},
+                )
             sub_results.append(sub_result)
 
         r1, r2 = sub_results
