@@ -11,7 +11,7 @@ import httpx
 import statistics
 
 S2_API = "https://api.semanticscholar.org/graph/v1"
-S2_FIELDS = "citationCount,influentialCitationCount,citations.fieldsOfStudy,authors.hIndex,authors.citationCount,references"
+S2_FIELDS = "citationCount,influentialCitationCount,citations.fieldsOfStudy,citations.citationCount,authors.hIndex,authors.citationCount,references"
 
 ES_URL = "http://localhost:9200"
 INDEX = "arxiv_papers"
@@ -53,12 +53,20 @@ def compute_enrichment(s2: dict) -> dict:
     authors = s2.get("authors") or []
     h_indices = [a.get("hIndex") for a in authors if a.get("hIndex") is not None]
 
+    # Median citation count of citing papers
+    citing_citation_counts = []
+    for cit in (s2.get("citations") or []):
+        if isinstance(cit, dict):
+            cc = cit.get("citationCount")
+            if cc is not None:
+                citing_citation_counts.append(cc)
+
     refs = s2.get("references") or []
 
     return {
         "citation_stats.total_citations": cites,
         "citation_stats.top_citing_categories": top_citing,
-        "citation_stats.median_h_index_citing_authors": statistics.median(h_indices) if h_indices else None,
+        "citation_stats.median_h_index_citing_authors": statistics.median(citing_citation_counts) if citing_citation_counts else None,
         "references_stats.total_references": len(refs),
         "first_author_h_index": authors[0].get("hIndex") if authors else None,
     }

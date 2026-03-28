@@ -100,6 +100,7 @@ def get_index_mapping(embedding_dim: int) -> dict:
                 },
                 "authors": {
                     "type": "nested",
+                    "include_in_root": True,
                     "properties": {
                         "name": {
                             "type": "text",

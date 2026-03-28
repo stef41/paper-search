@@ -11,7 +11,7 @@ import statistics
 import httpx
 
 S2_API = "https://api.semanticscholar.org/graph/v1"
-S2_FIELDS = "citationCount,citations.externalIds,citations.fieldsOfStudy,authors.hIndex,references.externalIds,externalIds"
+S2_FIELDS = "citationCount,citations.externalIds,citations.fieldsOfStudy,citations.citationCount,authors.hIndex,references.externalIds,externalIds"
 ES_URL = "http://localhost:9200"
 INDEX = "arxiv_papers"
 BATCH_SIZE = 100  # S2 allows up to 500 per batch request
@@ -102,7 +102,15 @@ async def main():
                 # Author h-indices
                 authors = s2_data.get("authors") or []
                 h_indices = [a.get("hIndex") for a in authors if a.get("hIndex") is not None]
-                median_h = statistics.median(h_indices) if h_indices else None
+
+                # Median citation count of citing papers
+                citing_citation_counts = []
+                for cit in (s2_data.get("citations") or []):
+                    if isinstance(cit, dict):
+                        cc = cit.get("citationCount")
+                        if cc is not None:
+                            citing_citation_counts.append(cc)
+                median_h = statistics.median(citing_citation_counts) if citing_citation_counts else None
 
                 refs = s2_data.get("references") or []
                 citations_list = s2_data.get("citations") or []
