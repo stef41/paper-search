@@ -494,7 +494,11 @@ class SearchEngine:
             )
             hits = resp["hits"]["hits"]
             if hits:
-                return hits[0]["_source"]
+                source = hits[0]["_source"]
+                source.pop("title_embedding", None)
+                source.pop("abstract_embedding", None)
+                source.pop("paragraph_embeddings", None)
+                return source
             return None
         except Exception:
             logger.exception("get_paper_error", arxiv_id=arxiv_id)

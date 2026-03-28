@@ -435,6 +435,9 @@ class GraphEngine:
         if not knn:
             return None
 
+        # Normalize to single KNN entry (use first for prefilter)
+        if isinstance(knn, list):
+            knn = knn[0]
         knn["k"] = min(max_candidates, 5000)
         knn["num_candidates"] = min(max_candidates * 5, 10000)
         body: dict[str, Any] = {"knn": knn, "size": max_candidates, "_source": ["arxiv_id"]}
@@ -3509,13 +3512,14 @@ class GraphEngine:
         while queue:
             v = queue.pop(0)
             topo_order.append(v)
-            depth[v] = 0
+            if v not in depth:
+                depth[v] = 0
             # For each paper that cites v (v is in their references)
             for u in in_edges.get(v, set()):
                 in_deg[u] -= 1
                 if in_deg[u] == 0:
                     queue.append(u)
-                depth_candidate = depth.get(v, 0) + 1
+                depth_candidate = depth[v] + 1
                 depth[u] = max(depth.get(u, 0), depth_candidate)
             queue.sort(key=lambda x: paper_data.get(x, {}).get("submitted_date", "") or "")
 
@@ -3596,12 +3600,16 @@ class GraphEngine:
 
         predictions: list[tuple[str, str, float]] = []
 
+        # Cap active nodes for O(n²) methods to prevent DoS
+        active_nodes = sorted(node_list, key=lambda x: -len(undirected.get(x, set())))
+        active_nodes = active_nodes[:min(len(active_nodes), 2000)]
+
         if method == "common_neighbors":
-            for i, a in enumerate(node_list):
+            for i, a in enumerate(active_nodes):
                 na = undirected.get(a, set())
                 if not na:
                     continue
-                for b in node_list[i + 1:]:
+                for b in active_nodes[i + 1:]:
                     if (a, b) in existing:
                         continue
                     nb = undirected.get(b, set())
@@ -3610,11 +3618,11 @@ class GraphEngine:
                         predictions.append((a, b, float(score)))
 
         elif method == "jaccard":
-            for i, a in enumerate(node_list):
+            for i, a in enumerate(active_nodes):
                 na = undirected.get(a, set())
                 if not na:
                     continue
-                for b in node_list[i + 1:]:
+                for b in active_nodes[i + 1:]:
                     if (a, b) in existing:
                         continue
                     nb = undirected.get(b, set())
@@ -3625,11 +3633,11 @@ class GraphEngine:
                             predictions.append((a, b, score))
 
         elif method == "adamic_adar":
-            for i, a in enumerate(node_list):
+            for i, a in enumerate(active_nodes):
                 na = undirected.get(a, set())
                 if not na:
                     continue
-                for b in node_list[i + 1:]:
+                for b in active_nodes[i + 1:]:
                     if (a, b) in existing:
                         continue
                     nb = undirected.get(b, set())
@@ -4259,8 +4267,8 @@ class GraphEngine:
         import random
 
         limit = min(gq.limit or 50, self.MAX_RESULTS)
-        k = min(gq.influence_seeds, 200)  # number of seeds to select
-        num_simulations = 100
+        k = min(gq.influence_seeds, 20)  # cap seeds to prevent combinatorial explosion
+        num_simulations = 20
 
         paper_data, out_edges, in_edges, undirected = await self._build_citation_subgraph(
             gq, sr, emb, size_multiplier=8)
@@ -4307,7 +4315,7 @@ class GraphEngine:
 
         # Pre-filter candidates (top by degree for efficiency)
         candidates = sorted(node_list, key=lambda x: -len(undirected.get(x, set())))
-        candidates = candidates[:min(len(candidates), 2000)]
+        candidates = candidates[:min(len(candidates), 500)]
 
         for _ in range(k):
             best_node = ""
