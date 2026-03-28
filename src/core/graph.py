@@ -1233,6 +1233,12 @@ class GraphEngine:
 
         relation = "cites" if direction == "references" else "cited_by"
 
+        if aggregate_by in ("author", "year"):
+            nodes.append(GraphNode(
+                id="seed_set", label="Seed Papers", type="group",
+                properties={"paper_count": len(seed_papers)},
+            ))
+
         if aggregate_by == "category":
             # Count by category across all traversed papers
             cat_counts: dict[str, int] = {}
@@ -3213,7 +3219,7 @@ class GraphEngine:
 
         # Normalize
         if N > 2:
-            scale = 1.0 / (2.0 * (N - 1) * (N - 2))  # undirected normalization
+            scale = 1.0 / ((N - 1) * (N - 2))  # undirected normalization
             if len(sample) < N:
                 scale *= N / len(sample)  # Approximate scaling
             for n in node_list:
