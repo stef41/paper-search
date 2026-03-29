@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from typing import Any
 
 import numpy as np
@@ -12,16 +13,19 @@ from src.core.config import get_settings
 logger = structlog.get_logger()
 
 _model = None
+_model_lock = threading.Lock()
 
 
 def _get_model():
     global _model
     if _model is None:
-        from sentence_transformers import SentenceTransformer
+        with _model_lock:
+            if _model is None:
+                from sentence_transformers import SentenceTransformer
 
-        settings = get_settings()
-        _model = SentenceTransformer(settings.semantic_model)
-        logger.info("loaded_embedding_model", model=settings.semantic_model)
+                settings = get_settings()
+                _model = SentenceTransformer(settings.semantic_model)
+                logger.info("loaded_embedding_model", model=settings.semantic_model)
     return _model
 
 

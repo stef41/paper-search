@@ -115,12 +115,17 @@ def parse_oai_record(record_xml: Any) -> dict | None:
     if updated_date is None:
         updated_date = submitted_date
 
-    # Parse authors
+    # Parse authors — arXivRaw uses "Last, First" pairs separated by
+    # newlines or " and ", NOT plain commas.
     authors_str = arx.findtext("arx:authors", "", OAI_NAMESPACES)
     author_list = []
     if authors_str:
-        for i, name in enumerate(authors_str.split(",")):
-            name = name.strip()
+        # Split on newlines first, then on " and " within each line
+        segments: list[str] = []
+        for line in authors_str.split("\n"):
+            segments.extend(re.split(r"\s+and\s+", line))
+        for i, name in enumerate(segments):
+            name = name.strip().strip(",")
             if name:
                 author_list.append({
                     "name": name,

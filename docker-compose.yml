@@ -89,6 +89,7 @@ services:
         condition: service_healthy
     networks:
       - arxiv-net
+      - arxiv-egress
     volumes:
       - arxiv_data:/data
     read_only: true
@@ -115,6 +116,7 @@ services:
         condition: service_healthy
     networks:
       - arxiv-net
+      - arxiv-egress
     volumes:
       - arxiv_data:/data
     tmpfs:
@@ -142,6 +144,7 @@ services:
         condition: service_healthy
     networks:
       - arxiv-net
+      - arxiv-egress
     tmpfs:
       - /tmp
     security_opt:
@@ -166,3 +169,5 @@ networks:
   arxiv-net:
     driver: bridge
     internal: true
+  arxiv-egress:
+    driver: bridge

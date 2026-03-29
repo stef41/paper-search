@@ -353,6 +353,11 @@ class GraphEngine:
             tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
             if tc < int(filters["min_citations"]):
                 return False
+        if "max_citations" in filters:
+            cs = src.get("citation_stats") or {}
+            tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
+            if tc > int(filters["max_citations"]):
+                return False
         if "date_from" in filters:
             sd = src.get("submitted_date") or ""
             if not sd:
@@ -1724,7 +1729,7 @@ class GraphEngine:
                     edges.append(GraphEdge(
                         source=papers[i][0]["arxiv_id"],
                         target=papers[j][0]["arxiv_id"],
-                        relation="similar",
+                        relation="similar_to",
                         weight=round(sim, 4),
                     ))
 
@@ -6008,7 +6013,7 @@ class GraphEngine:
                     }))
             edges_out.append(GraphEdge(
                 source=u, target=v,
-                relation="similar",
+                relation="similar_to",
                 weight=round(score, 6),
             ))
 
@@ -7460,6 +7465,10 @@ class GraphEngine:
             GraphQueryType.PIPELINE, GraphQueryType.SUBGRAPH_PROJECTION,
         }
 
+        # Save parent embeddings before sub-execute() calls, because
+        # execute()'s finally block clears the context vars.
+        saved_embeddings = _ctx_embeddings.get()
+
         sub_results: list[GraphResponse] = []
         for i, sq_dict in enumerate(gq.set_queries[:2]):
             try:
@@ -7475,7 +7484,7 @@ class GraphEngine:
                     metadata={"error": f"Sub-query {i + 1}: {sub_gq.type.value} cannot be nested inside {mode}"},
                 )
             try:
-                sub_result = await self.execute(sub_gq, sr, embeddings=_ctx_embeddings.get())
+                sub_result = await self.execute(sub_gq, sr, embeddings=saved_embeddings)
             except Exception as e:
                 return GraphResponse(
                     nodes=[], edges=[], total=0, took_ms=0,
