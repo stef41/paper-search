@@ -2000,13 +2000,15 @@ class GraphEngine:
             ))
 
         # Edges: category → its domain
+        domain_ids = {n.id for n in nodes if n.type == "domain"}
         for b in cat_buckets:
             cat = b["key"]
             domain = cat.split(".")[0] if "." in cat else cat
-            edges.append(GraphEdge(
-                source=cat, target=domain,
-                relation="belongs_to", weight=b["doc_count"],
-            ))
+            if domain in domain_ids and domain != cat:
+                edges.append(GraphEdge(
+                    source=cat, target=domain,
+                    relation="belongs_to", weight=b["doc_count"],
+                ))
 
         return GraphResponse(
             nodes=nodes, edges=edges,
