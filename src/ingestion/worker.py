@@ -311,11 +311,13 @@ async def run_ingestion_cycle(
                 )
             except Exception as e:
                 logger.error("oai_fetch_error", error=str(e), page=page_count)
-                # Save interrupted state so we can resume
+                # Save interrupted state so we can resume.
+                # Clear the resumption token — if it expired or is invalid,
+                # re-saving it would cause an infinite retry loop.
                 await save_state(
                     es, source_key,
                     last_harvested_date=current_date,
-                    resumption_token=params.get("resumptionToken"),
+                    resumption_token=None,
                     total_harvested=total_indexed,
                     status="interrupted",
                 )
@@ -337,10 +339,12 @@ async def run_ingestion_cycle(
                     total_indexed += count
                 except Exception as e:
                     logger.error("batch_processing_error", error=str(e), page=page_count)
+                    # Save the CURRENT page's token so we re-fetch this page on resume
+                    # (not `token` which is the next page's token)
                     await save_state(
                         es, source_key,
                         last_harvested_date=current_date,
-                        resumption_token=token,
+                        resumption_token=params.get("resumptionToken"),
                         total_harvested=total_indexed,
                         status="interrupted",
                     )

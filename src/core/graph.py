@@ -493,6 +493,12 @@ class GraphEngine:
         body: dict[str, Any] = {"query": query, "aggs": aggs, "size": size}
         knn = self._build_knn(sr, emb)
         if knn:
+            # Apply the full query as KNN filter so KNN results are
+            # constrained by the handler's extra filters (e.g. author clause),
+            # not just the base SearchRequest filters.
+            entries = knn if isinstance(knn, list) else [knn]
+            for entry in entries:
+                entry["filter"] = query
             body["knn"] = knn
         return await self.client.search(
             index=self.index,
