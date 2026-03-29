@@ -137,15 +137,15 @@ class QueryBuilder:
                 }
             })
 
-        # Regex searches
+        # Regex searches (hard filters — in filter_clauses so KNN respects them too)
         if self.req.title_regex:
-            must.append({"regexp": {"title.raw": {"value": self.req.title_regex, "flags": "NONE"}}})
+            filter_clauses.append({"regexp": {"title.raw": {"value": self.req.title_regex, "flags": "NONE"}}})
 
         if self.req.abstract_regex:
-            must.append({"regexp": {"abstract.raw": {"value": self.req.abstract_regex, "flags": "NONE"}}})
+            filter_clauses.append({"regexp": {"abstract.raw": {"value": self.req.abstract_regex, "flags": "NONE"}}})
 
         if self.req.author_regex:
-            must.append({
+            filter_clauses.append({
                 "nested": {
                     "path": "authors",
                     "query": {
@@ -154,9 +154,9 @@ class QueryBuilder:
                 }
             })
 
-        # Author filters
+        # Author filters (hard filters — in filter_clauses so KNN respects them too)
         if self.req.author:
-            must.append({
+            filter_clauses.append({
                 "nested": {
                     "path": "authors",
                     "query": {
@@ -166,7 +166,7 @@ class QueryBuilder:
             })
 
         if self.req.first_author:
-            must.append({
+            filter_clauses.append({
                 "nested": {
                     "path": "authors",
                     "query": {
@@ -188,7 +188,7 @@ class QueryBuilder:
                 h_range["gte"] = self.req.min_h_index
             if self.req.max_h_index is not None:
                 h_range["lte"] = self.req.max_h_index
-            must.append({
+            filter_clauses.append({
                 "nested": {
                     "path": "authors",
                     "query": {
