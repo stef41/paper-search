@@ -472,9 +472,9 @@ class GraphEngine:
                 entry["k"] = min(max(requested_size, entry.get("k", 20)), 100)
                 entry["num_candidates"] = min(entry["k"] * 10, 1000)
             body["knn"] = knn
-        return await self.client.search(
+        body["timeout"] = "10s"
+        return await self.client.options(request_timeout=15).search(
             index=self.index, body=body,
-            request_timeout=15, timeout="10s",
         )
 
     async def _semantic_prefilter(
@@ -505,9 +505,9 @@ class GraphEngine:
             knn["filter"] = base_q
 
         try:
-            resp = await self.client.search(
+            body["timeout"] = "10s"
+            resp = await self.client.options(request_timeout=15).search(
                 index=self.index, body=body,
-                request_timeout=15, timeout="10s",
             )
             ids = [h["_source"]["arxiv_id"] for h in resp["hits"]["hits"]]
             if not ids:
@@ -536,11 +536,10 @@ class GraphEngine:
             for entry in entries:
                 entry["filter"] = query
             body["knn"] = knn
-        return await self.client.search(
+        body["timeout"] = "10s"
+        return await self.client.options(request_timeout=15).search(
             index=self.index,
             body=body,
-            request_timeout=15,
-            timeout="10s",
         )
 
     # ── 1. Category diversity ──

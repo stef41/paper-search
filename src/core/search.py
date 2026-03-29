@@ -428,13 +428,12 @@ class SearchEngine:
 
         logger.debug("search_query", body=body)
 
+        body["timeout"] = "5s"
+        body["track_total_hits"] = True
         start = time.monotonic()
-        result = await self.client.search(
+        result = await self.client.options(request_timeout=10).search(
             index=self.index,
             body=body,
-            request_timeout=10,
-            track_total_hits=True,
-            timeout="5s",
         )
         took_ms = int((time.monotonic() - start) * 1000)
 
@@ -467,7 +466,7 @@ class SearchEngine:
         )
 
     async def get_stats(self) -> StatsResponse:
-        count_resp = await self.client.count(index=self.index, request_timeout=10)
+        count_resp = await self.client.options(request_timeout=10).count(index=self.index)
         total = count_resp["count"]
 
         aggs_body = {
@@ -481,9 +480,9 @@ class SearchEngine:
                 "avg_citations": {"avg": {"field": "citation_stats.total_citations"}},
             },
         }
-        aggs_resp = await self.client.search(
+        aggs_body["timeout"] = "5s"
+        aggs_resp = await self.client.options(request_timeout=10).search(
             index=self.index, body=aggs_body,
-            request_timeout=10, timeout="5s",
         )
         aggs = aggs_resp["aggregations"]
 
@@ -502,10 +501,9 @@ class SearchEngine:
         )
 
     async def get_paper(self, arxiv_id: str) -> dict | None:
-        resp = await self.client.search(
+        resp = await self.client.options(request_timeout=5).search(
             index=self.index,
             body={"query": {"term": {"arxiv_id": arxiv_id}}, "size": 1},
-            request_timeout=5,
         )
         hits = resp["hits"]["hits"]
         if hits:

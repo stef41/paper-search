@@ -30,5 +30,5 @@ async def get_redis_client() -> redis.Redis:
 async def close_redis_client() -> None:
     global _pool
     if _pool is not None:
-        await _pool.close()
+        await _pool.aclose()
         _pool = None
