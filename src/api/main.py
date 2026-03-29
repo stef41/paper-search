@@ -49,15 +49,29 @@ def _get_client_ip(request: Request) -> str:
     except ValueError:
         return raw_ip
 
+    # Handle IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1 from dual-stack)
+    if isinstance(client_addr, ipaddress.IPv6Address) and client_addr.ipv4_mapped:
+        client_addr = client_addr.ipv4_mapped
+
     is_trusted = any(client_addr in net for net in trusted_nets)
     if not is_trusted:
         return raw_ip
 
-    # Connection is from a trusted proxy — read the forwarded header
+    # Connection is from a trusted proxy — read the forwarded header.
+    # Walk right-to-left, skipping trusted proxies, to find the real client IP.
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
-        # Leftmost IP is the original client
-        return forwarded.split(",")[0].strip()
+        ips = [ip.strip() for ip in forwarded.split(",")]
+        for ip in reversed(ips):
+            try:
+                addr = ipaddress.ip_address(ip)
+                if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+                    addr = addr.ipv4_mapped
+            except ValueError:
+                continue
+            if not any(addr in net for net in trusted_nets):
+                return ip
+        return ips[0].strip()  # all are proxies — use leftmost
 
     return raw_ip
 
@@ -170,6 +184,11 @@ def create_app() -> FastAPI:
             stale = [ip for ip, h in _ip_hits.items() if not h or h[-1] < cutoff]
             for ip in stale:
                 del _ip_hits[ip]
+            # Emergency cap: prevent unbounded growth under distributed attacks
+            if len(_ip_hits) > 100_000:
+                sorted_ips = sorted(_ip_hits, key=lambda ip: _ip_hits[ip][-1] if _ip_hits[ip] else 0)
+                for ip in sorted_ips[:len(sorted_ips) // 2]:
+                    del _ip_hits[ip]
             _ip_last_sweep = now
 
         # Prune old entries and append current
@@ -239,7 +258,11 @@ def create_app() -> FastAPI:
 
         # Handle semantic embeddings (single or list)
         sem_list = body.semantic if isinstance(body.semantic, list) else ([body.semantic] if body.semantic else None)
-        embeddings = await _resolve_embeddings(sem_list)
+        try:
+            embeddings = await _resolve_embeddings(sem_list)
+        except Exception as e:
+            logger.error("embedding_generation_failed", error=str(e))
+            raise HTTPException(status_code=503, detail="Semantic search temporarily unavailable")
 
         es = await get_es_client()
         settings = get_settings()
@@ -259,7 +282,11 @@ def create_app() -> FastAPI:
 
         # Handle semantic embeddings (single or list)
         sem_list = body.semantic if isinstance(body.semantic, list) else ([body.semantic] if body.semantic else None)
-        embeddings = await _resolve_embeddings(sem_list)
+        try:
+            embeddings = await _resolve_embeddings(sem_list)
+        except Exception as e:
+            logger.error("embedding_generation_failed", error=str(e))
+            raise HTTPException(status_code=503, detail="Semantic search temporarily unavailable")
 
         es = await get_es_client()
         settings_obj = get_settings()
