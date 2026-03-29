@@ -200,7 +200,11 @@ async def fetch_papers(http: httpx.AsyncClient, mode: str, limit: int, stale_day
         return []
 
     r = await http.post(f"{ES_URL}/{INDEX}/_search", json=query)
-    hits = r.json()["hits"]["hits"]
+    if r.status_code != 200:
+        print(f"ES search failed (status {r.status_code}): {str(r.text)[:300]}")
+        return []
+    data = r.json()
+    hits = data.get("hits", {}).get("hits", [])
     return [{"arxiv_id": h["_source"]["arxiv_id"], "_id": h["_id"]} for h in hits]
 
 
