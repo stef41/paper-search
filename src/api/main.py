@@ -118,6 +118,8 @@ async def _resolve_embeddings(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    if any(k in ("changeme-key-1", "") for k in settings.api_key_list):
+        logger.warning("SECURITY: using default or empty API key — set API_KEYS env var before deploying")
     es = await get_es_client()
     await ensure_index(es, settings.es_index, settings.embedding_dim)
     await get_redis_client()

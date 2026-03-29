@@ -208,28 +208,36 @@ async def enrich_papers(
                                 ea["citation_count"] = author_enrich[i].get("citation_count")
                         update_doc["authors"] = existing_authors
 
-                    await es.update(
-                        index=settings.es_index,
-                        id=arxiv_id,
-                        body={"doc": {
-                            **update_doc,
-                            "enrichment_source": "semantic_scholar",
-                            "enriched_at": datetime.now(timezone.utc).isoformat(),
-                        }},
-                    )
+                    try:
+                        await es.update(
+                            index=settings.es_index,
+                            id=arxiv_id,
+                            body={"doc": {
+                                **update_doc,
+                                "enrichment_source": "semantic_scholar",
+                                "enriched_at": datetime.now(timezone.utc).isoformat(),
+                            }},
+                        )
+                    except Exception as e:
+                        logger.warning("paper_update_failed", arxiv_id=arxiv_id, error=str(e))
+                        continue
                     total_enriched += 1
                 else:
                     # Mark paper so it's not retried on every future run
-                    await es.update(
-                        index=settings.es_index,
-                        id=arxiv_id,
-                        body={"doc": {
-                            "enrichment_source": "s2_not_found",
-                            "enriched_at": datetime.now(timezone.utc).isoformat(),
-                        }},
-                    )
+                    try:
+                        await es.update(
+                            index=settings.es_index,
+                            id=arxiv_id,
+                            body={"doc": {
+                                "enrichment_source": "s2_not_found",
+                                "enriched_at": datetime.now(timezone.utc).isoformat(),
+                            }},
+                        )
+                    except Exception as e:
+                        logger.warning("paper_update_failed", arxiv_id=arxiv_id, error=str(e))
+                        continue
 
-                    if total_enriched % 10 == 0:
+                if total_enriched % 10 == 0 and total_enriched > 0:
                         elapsed = time.monotonic() - start_time
                         logger.info(
                             "enrichment_progress",

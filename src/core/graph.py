@@ -6471,12 +6471,12 @@ class GraphEngine:
             if "min_citations" in f:
                 cs = src.get("citation_stats") or {}
                 tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
-                if tc < int(f["min_citations"]):
+                if tc < _safe_int(f["min_citations"]):
                     return False
             if "max_citations" in f:
                 cs = src.get("citation_stats") or {}
                 tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
-                if tc > int(f["max_citations"]):
+                if tc > _safe_int(f["max_citations"]):
                     return False
             if "has_github" in f and src.get("has_github") != f["has_github"]:
                 return False
