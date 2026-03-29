@@ -437,6 +437,10 @@ class GraphEngine:
         # If a pipeline/projection set an active ID filter, apply it
         _id_filter = _ctx_active_id_filter.get()
         if _id_filter is not None:
+            if not _id_filter:
+                # Empty filter means previous step produced no papers;
+                # return a query that matches nothing.
+                return {"bool": {"must_not": [{"match_all": {}}]}}
             q = {"bool": {"must": [q], "filter": [{"terms": {"arxiv_id": _id_filter}}]}}
         return q
 
@@ -7129,7 +7133,11 @@ class GraphEngine:
         ]}})
 
         if sf.seed_arxiv_ids:
-            query = {"terms": {"arxiv_id": sf.seed_arxiv_ids[:10000]}}
+            seed_clause: dict = {"terms": {"arxiv_id": sf.seed_arxiv_ids[:10000]}}
+            if filters:
+                query = {"bool": {"must": [seed_clause], "filter": filters}}
+            else:
+                query = seed_clause
         elif musts or filters:
             query = {"bool": {}}
             if musts:

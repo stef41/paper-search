@@ -408,7 +408,7 @@ class PathFilter(BaseModel):
 
 class PipelineStep(BaseModel):
     """A single step in a graph algorithm pipeline."""
-    type: str = Field(description="Graph query type to run at this step")
+    type: GraphQueryType = Field(description="Graph query type to run at this step")
     limit: int = Field(default=50, ge=1, le=10000)
     # Optional overrides for algorithm params
     params: dict[str, Any] = Field(default_factory=dict,
@@ -437,6 +437,15 @@ class SubgraphFilter(BaseModel):
     direction: str = Field(default="both", pattern="^(references|cited_by|both)$",
         description="Which citation edges to include")
     max_nodes: int = Field(default=500, ge=10, le=10000, description="Max nodes in the projected subgraph")
+
+    @model_validator(mode="after")
+    def _check_citation_range(self) -> "SubgraphFilter":
+        if (self.min_citations is not None and self.max_citations is not None
+                and self.min_citations > self.max_citations):
+            raise ValueError(
+                f"min_citations ({self.min_citations}) cannot exceed max_citations ({self.max_citations})"
+            )
+        return self
 
 
 class GraphQuery(BaseModel):

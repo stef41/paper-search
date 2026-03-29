@@ -282,6 +282,20 @@ class QueryBuilder:
         if not any([must, should, filter_clauses, must_not]):
             return {"match_all": {}}
 
+        # If there are filter/must_not but no scoring clauses (must/should),
+        # the bool query produces _score=0 for all hits.  When this query is
+        # later wrapped in function_score for semantic-exclude, 0*penalty=0
+        # and the exclude has no effect.  Injecting a match_all into `must`
+        # ensures a base score of 1.0 so the penalty can actually penalise.
+        if (filter_clauses or must_not) and not must and not should:
+            # Check whether exclude-mode semantics will be applied
+            has_exclude = any(
+                sq.mode == SemanticMode.EXCLUDE
+                for sq, _ in self._embeddings
+            )
+            if has_exclude:
+                must.append({"match_all": {}})
+
         bool_query: dict[str, Any] = {}
         if must:
             bool_query["must"] = must
@@ -398,7 +412,7 @@ class QueryBuilder:
 
         if self.req.sort_by == SortField.RELEVANCE:
             return [
-                "_score",
+                {"_score": {"order": self.req.sort_order.value}},
                 {"submitted_date": {"order": "desc", "missing": "_last"}},
                 {"arxiv_id": {"order": "asc"}},
             ]
@@ -472,7 +486,7 @@ class SearchEngine:
         aggs_body = {
             "size": 0,
             "aggs": {
-                "categories": {"terms": {"field": "categories", "size": 100}},
+                "categories": {"terms": {"field": "categories", "size": 200}},
                 "min_date": {"min": {"field": "submitted_date"}},
                 "max_date": {"max": {"field": "submitted_date"}},
                 "github_count": {"filter": {"term": {"has_github": True}}},

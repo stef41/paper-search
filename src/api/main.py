@@ -317,7 +317,7 @@ def create_app() -> FastAPI:
     @limiter.limit(f"{settings.rate_limit_per_minute}/minute")
     async def get_paper(request: Request, arxiv_id: str):
         # Validate arxiv_id format to prevent path traversal / abuse
-        if not re.match(r'^(\d{4}\.\d{4,5}(v\d+)?|[a-z-]+/\d{7}(v\d+)?)$', arxiv_id):
+        if not re.match(r'^(\d{4}\.\d{4,5}(v\d+)?|[a-zA-Z][a-zA-Z0-9._-]*/\d{7}(v\d+)?)$', arxiv_id):
             raise HTTPException(status_code=400, detail="Invalid ArXiv ID format")
         es = await get_es_client()
         settings_obj = get_settings()
