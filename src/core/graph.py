@@ -3004,9 +3004,13 @@ class GraphEngine:
 
         _FIELDS = F.subgraph_fields
 
+        fetch_size = min(limit * size_multiplier, 10000)
+        if gq.seed_arxiv_ids:
+            fetch_size = min(max(fetch_size, len(gq.seed_arxiv_ids)), 10000)
+
         resp = await self._do_search({
             "query": seed_query,
-            "size": min(limit * size_multiplier, 10000),
+            "size": fetch_size,
             "_source": _FIELDS,
         }, sr, emb)
 
@@ -5166,19 +5170,21 @@ class GraphEngine:
 
         for _ in range(n_walks):
             current = seed
+            visit_count[current] += 1
             for step in range(walk_len):
-                visit_count[current] += 1
                 if random.random() < tp:
                     current = seed
+                    visit_count[current] += 1
                     continue
                 nbrs = list(undirected.get(current, set()))
                 if not nbrs:
                     current = seed
+                    visit_count[current] += 1
                     continue
                 next_node = random.choice(nbrs)
                 transition_count[(current, next_node)] += 1
                 current = next_node
-            visit_count[current] += 1
+                visit_count[current] += 1
 
         # Normalize visit counts
         total_visits = sum(visit_count.values())
@@ -7422,7 +7428,7 @@ class GraphEngine:
                         if nid in outgoing_set:
                             edges_out.append(GraphEdge(source=current_id, target=nid, relation="cites"))
                         else:
-                            edges_out.append(GraphEdge(source=nid, target=current_id, relation="cites"))
+                            edges_out.append(GraphEdge(source=nid, target=current_id, relation="cited_by"))
 
         # Filter out dangling edges (nodes that failed predicate or weren't fetched)
         if collect_edges:
