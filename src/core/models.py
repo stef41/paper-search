@@ -47,6 +47,7 @@ class Paper(BaseModel):
     github_urls: list[str] = Field(default_factory=list)
     pdf_url: str | None = None
     abstract_url: str | None = None
+    domains: list[str] = Field(default_factory=list)
 
     # Embeddings (stored but not returned by default)
     title_embedding: list[float] | None = None

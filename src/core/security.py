@@ -76,6 +76,10 @@ def validate_regex_pattern(pattern: str, max_length: int = 200) -> str:
 def validate_search_request(request: Any) -> None:
     settings = get_settings()
 
+    # Strip null bytes from query text before any further checks
+    if request.query:
+        request.query = sanitize_query(request.query, max_length=settings.max_query_length)
+
     if request.query and len(request.query) > settings.max_query_length:
         raise HTTPException(
             status_code=400,

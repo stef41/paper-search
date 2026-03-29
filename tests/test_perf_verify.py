@@ -383,8 +383,8 @@ async def test_aggregation_with_coauthor(c):
             ],
             "pattern_edges": [{"source": "a", "target": "b", "relation": "co_authored"}],
             "aggregations": [
-                {"alias": "a", "function": "count", "output_name": "total"},
-                {"alias": "a", "function": "collect", "property": "primary_category", "output_name": "cats"},
+                {"alias": "total", "function": "count"},
+                {"alias": "cats", "function": "collect", "field": "primary_category"},
             ],
             "limit": 20,
         },

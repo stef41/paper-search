@@ -57,6 +57,14 @@ from src.core.search import QueryBuilder
 logger = structlog.get_logger()
 
 
+def _safe_int(val: Any, default: int = 0) -> int:
+    """Convert a value to int, returning *default* on failure."""
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Schema abstraction: decouple graph algorithms from ArXiv-specific field names
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -352,12 +360,12 @@ class GraphEngine:
         if "min_citations" in filters:
             cs = src.get("citation_stats") or {}
             tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
-            if tc < int(filters["min_citations"]):
+            if tc < _safe_int(filters["min_citations"]):
                 return False
         if "max_citations" in filters:
             cs = src.get("citation_stats") or {}
             tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
-            if tc > int(filters["max_citations"]):
+            if tc > _safe_int(filters["max_citations"]):
                 return False
         if "date_from" in filters:
             sd = src.get("submitted_date") or ""
@@ -469,8 +477,8 @@ class GraphEngine:
                 # Override k to match the graph handler's actual result size
                 # (the default k is derived from SearchRequest pagination
                 # which is unrelated to the graph query's size needs).
-                entry["k"] = min(max(requested_size, entry.get("k", 20)), 100)
-                entry["num_candidates"] = min(entry["k"] * 10, 1000)
+                entry["k"] = min(max(requested_size, entry.get("k", 20)), 500)
+                entry["num_candidates"] = min(entry["k"] * 10, 5000)
             body["knn"] = knn
         body["timeout"] = "10s"
         return await self.client.options(request_timeout=15).search(
@@ -7304,7 +7312,7 @@ class GraphEngine:
         until_max_nodes = min(until.get("max_nodes", limit * 3), self.MAX_RESULTS)
         until_max_depth = min(until.get("max_depth", max_depth), 50)
         until_category = until.get("category")
-        until_min_cit = int(until["min_citations"]) if until.get("min_citations") is not None else None
+        until_min_cit = _safe_int(until["min_citations"]) if until.get("min_citations") is not None else None
         collect_edges = gq.collect_edges
 
         _FIELDS = F.subgraph_fields
@@ -7340,9 +7348,9 @@ class GraphEngine:
 
             # Apply traverse_predicate filter (skip seed at depth 0)
             if predicate and depth > 0:
-                if "min_citations" in predicate and F.extract_citations(src) < int(predicate["min_citations"]):
+                if "min_citations" in predicate and F.extract_citations(src) < _safe_int(predicate["min_citations"]):
                     continue
-                if "max_citations" in predicate and F.extract_citations(src) > int(predicate["max_citations"]):
+                if "max_citations" in predicate and F.extract_citations(src) > _safe_int(predicate["max_citations"]):
                     continue
                 if "categories" in predicate:
                     if not set(predicate["categories"]) & set(src.get(F.node_categories) or []):
