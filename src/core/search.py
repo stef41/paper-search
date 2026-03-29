@@ -68,6 +68,7 @@ class QueryBuilder:
         body["sort"] = self._build_sort()
         body["from"] = self.req.offset
         body["size"] = self.req.limit
+        body["_source"] = {"excludes": ["title_embedding", "abstract_embedding", "paragraph_embeddings"]}
 
         if self.req.highlight:
             body["highlight"] = {
@@ -453,8 +454,7 @@ class SearchEngine:
             hits.append(SearchHit(
                 score=hit.get("_score"),
                 highlights=highlights if highlights else None,
-                **{k: v for k, v in source.items()
-                   if k not in ("title_embedding", "abstract_embedding", "paragraph_embeddings")},
+                **source,
             ))
 
         return SearchResponse(
@@ -503,7 +503,11 @@ class SearchEngine:
     async def get_paper(self, arxiv_id: str) -> dict | None:
         resp = await self.client.options(request_timeout=5).search(
             index=self.index,
-            body={"query": {"term": {"arxiv_id": arxiv_id}}, "size": 1},
+            body={
+                "query": {"term": {"arxiv_id": arxiv_id}},
+                "size": 1,
+                "_source": {"excludes": ["title_embedding", "abstract_embedding", "paragraph_embeddings"]},
+            },
         )
         hits = resp["hits"]["hits"]
         if hits:

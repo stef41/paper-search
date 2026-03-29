@@ -114,9 +114,13 @@ def main():
                         content=("\n".join(bulk_lines) + "\n").encode(),
                         headers={"Content-Type": "application/x-ndjson"},
                     )
-                    if br.json().get("errors"):
-                        errs = sum(1 for it in br.json().get("items", []) if "error" in it.get("update", {}))
-                        print(f"  WARNING: {errs} bulk update errors")
+                    if br.status_code != 200:
+                        print(f"  WARNING: ES bulk returned {br.status_code}")
+                    else:
+                        br_json = br.json()
+                        if br_json.get("errors"):
+                            errs = sum(1 for it in br_json.get("items", []) if "error" in it.get("update", {}))
+                            print(f"  WARNING: {errs} bulk update errors")
                     bulk_lines = []
 
             if bulk_lines:
@@ -125,9 +129,13 @@ def main():
                     content=("\n".join(bulk_lines) + "\n").encode(),
                     headers={"Content-Type": "application/x-ndjson"},
                 )
-                if br.json().get("errors"):
-                    errs = sum(1 for it in br.json().get("items", []) if "error" in it.get("update", {}))
-                    print(f"  WARNING: {errs} bulk update errors")
+                if br.status_code != 200:
+                    print(f"  WARNING: ES bulk returned {br.status_code}")
+                else:
+                    br_json = br.json()
+                    if br_json.get("errors"):
+                        errs = sum(1 for it in br_json.get("items", []) if "error" in it.get("update", {}))
+                        print(f"  WARNING: {errs} bulk update errors")
 
             total += len(hits)
             elapsed = time.time() - t0

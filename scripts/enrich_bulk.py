@@ -174,6 +174,7 @@ async def main():
                 )
                 if br.status_code != 200:
                     print(f"  ES bulk error: {br.status_code}")
+                    batch_enriched = 0
                 else:
                     errors = br.json().get("errors", False)
                     if errors:
