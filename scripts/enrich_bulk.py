@@ -39,7 +39,10 @@ async def main():
             "_source": ["arxiv_id"],
         }
         r = await http.post(f"{ES_URL}/{INDEX}/_search", json=query)
-        hits = r.json()["hits"]["hits"]
+        if r.status_code != 200:
+            print(f"ES search failed (status {r.status_code}): {str(r.text)[:300]}")
+            return
+        hits = r.json().get("hits", {}).get("hits", [])
         print(f"Found {len(hits)} papers to enrich")
 
         total_enriched = 0
