@@ -18,6 +18,7 @@ class TestSorting:
         assert resp.status_code == 200
         data = resp.json()
         dates = [h["submitted_date"] for h in data["hits"] if h["submitted_date"]]
+        assert len(dates) >= 2, "Need at least 2 papers with dates to verify sort order"
         for i in range(len(dates) - 1):
             assert dates[i] >= dates[i + 1]
 
@@ -31,6 +32,7 @@ class TestSorting:
         assert resp.status_code == 200
         data = resp.json()
         dates = [h["submitted_date"] for h in data["hits"] if h["submitted_date"]]
+        assert len(dates) >= 2, "Need at least 2 papers with dates to verify sort order"
         for i in range(len(dates) - 1):
             assert dates[i] <= dates[i + 1]
 
@@ -44,6 +46,7 @@ class TestSorting:
         assert resp.status_code == 200
         data = resp.json()
         citations = [h["citation_stats"]["total_citations"] for h in data["hits"]]
+        assert len(citations) >= 2, "Need at least 2 papers to verify sort order"
         for i in range(len(citations) - 1):
             assert citations[i] >= citations[i + 1]
 
@@ -55,6 +58,14 @@ class TestSorting:
             headers=auth_headers(),
         )
         assert resp.status_code == 200
+        data = resp.json()
+        h_indices = [
+            h["first_author_h_index"] for h in data["hits"]
+            if h.get("first_author_h_index") is not None
+        ]
+        assert len(h_indices) >= 2, "Need at least 2 papers with h_index to verify sort order"
+        for i in range(len(h_indices) - 1):
+            assert h_indices[i] >= h_indices[i + 1]
 
     @pytest.mark.integration
     def test_sort_by_page_count(self, client):
@@ -66,6 +77,7 @@ class TestSorting:
         assert resp.status_code == 200
         data = resp.json()
         pages = [h["page_count"] for h in data["hits"] if h["page_count"]]
+        assert len(pages) >= 2, "Need at least 2 papers with page_count to verify sort order"
         for i in range(len(pages) - 1):
             assert pages[i] >= pages[i + 1]
 
@@ -73,12 +85,13 @@ class TestSorting:
     def test_sort_by_relevance(self, client):
         resp = client.post(
             "/search",
-            json={"query": "neural networks", "sort_by": "relevance"},
+            json={"query": "networks", "sort_by": "relevance"},
             headers=auth_headers(),
         )
         assert resp.status_code == 200
         data = resp.json()
         scores = [h["score"] for h in data["hits"] if h["score"] is not None]
+        assert len(scores) >= 2, "Need at least 2 papers with scores to verify sort order"
         for i in range(len(scores) - 1):
             assert scores[i] >= scores[i + 1]
 
@@ -90,6 +103,11 @@ class TestSorting:
             headers=auth_headers(),
         )
         assert resp.status_code == 200
+        data = resp.json()
+        dates = [h["updated_date"] for h in data["hits"] if h.get("updated_date")]
+        assert len(dates) >= 2, "Need at least 2 papers with updated_date to verify sort order"
+        for i in range(len(dates) - 1):
+            assert dates[i] >= dates[i + 1]
 
 
 class TestPagination:
@@ -134,8 +152,16 @@ class TestPagination:
     @pytest.mark.integration
     def test_pagination_consistency(self, client):
         """All papers from paginated results should cover total results."""
+        # First, get total paper count
+        first_resp = client.post(
+            "/search",
+            json={"offset": 0, "limit": 1, "sort_by": "date", "sort_order": "desc"},
+            headers=auth_headers(),
+        )
+        total_papers = first_resp.json()["total"]
+
         all_ids = set()
-        for offset in range(0, 10, 2):
+        for offset in range(0, total_papers + 2, 2):
             resp = client.post(
                 "/search",
                 json={"offset": offset, "limit": 2, "sort_by": "date", "sort_order": "desc"},
@@ -145,7 +171,7 @@ class TestPagination:
             for hit in data["hits"]:
                 all_ids.add(hit["arxiv_id"])
 
-        assert len(all_ids) == 6  # All sample papers
+        assert len(all_ids) == total_papers
 
 
 class TestCombinedQueries:

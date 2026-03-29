@@ -48,6 +48,9 @@ class TestAuthorFilters:
         data = resp.json()
         assert data["total"] >= 1
         # Papers should have at least one author with h_index >= 50
+        for hit in data["hits"]:
+            h_indices = [a.get("h_index") for a in hit["authors"] if a.get("h_index") is not None]
+            assert any(h >= 50 for h in h_indices), f"No author with h_index >= 50 in {hit['arxiv_id']}"
 
     @pytest.mark.integration
     def test_filter_by_max_h_index(self, client):
@@ -57,6 +60,11 @@ class TestAuthorFilters:
             headers=auth_headers(),
         )
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 1
+        for hit in data["hits"]:
+            h_indices = [a.get("h_index") for a in hit["authors"] if a.get("h_index") is not None]
+            assert any(h <= 10 for h in h_indices), f"No author with h_index <= 10 in {hit['arxiv_id']}"
 
     @pytest.mark.integration
     def test_filter_by_first_author_h_index(self, client):

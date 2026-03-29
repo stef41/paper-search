@@ -80,7 +80,7 @@ class TestE2ESearchWorkflows:
             "/search",
             json={
                 "has_github": False,
-                "max_page_count": 15,
+                "max_page_count": 50,
                 "sort_by": "date",
                 "sort_order": "desc",
             },
@@ -88,9 +88,10 @@ class TestE2ESearchWorkflows:
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert len(data["hits"]) >= 1, "Expected at least 1 non-GitHub paper with page_count <= 50"
         for hit in data["hits"]:
             assert hit["has_github"] is False
-            assert hit["page_count"] <= 15
+            assert hit["page_count"] <= 50
 
     @pytest.mark.e2e
     @pytest.mark.integration
