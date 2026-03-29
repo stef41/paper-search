@@ -24,6 +24,7 @@ citation thresholds, h-index, GitHub, regex, etc. are all respected.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field as dc_field
@@ -155,6 +156,17 @@ def get_edge_type(name: str) -> EdgeType:
 # Default mapping for ArXiv
 ARXIV_FIELDS = FieldMapping()
 
+# Per-coroutine request state (safe under concurrent asyncio requests)
+_ctx_active_id_filter: contextvars.ContextVar[list[str] | None] = contextvars.ContextVar(
+    "_ctx_active_id_filter", default=None
+)
+_ctx_embeddings: contextvars.ContextVar[list[tuple[SemanticQuery, list[float]]]] = contextvars.ContextVar(
+    "_ctx_embeddings", default=[]
+)
+_ctx_first_boost_emb: contextvars.ContextVar[list[float] | None] = contextvars.ContextVar(
+    "_ctx_first_boost_emb", default=None
+)
+
 
 class GraphEngine:
     """Executes graph-style queries against the ES index."""
@@ -167,7 +179,6 @@ class GraphEngine:
         self.client = client
         self.index = index
         self.F = fields or ARXIV_FIELDS
-        self._active_id_filter: list[str] | None = None
 
     async def execute(
         self,
@@ -180,16 +191,16 @@ class GraphEngine:
 
         # Normalize: prefer new multi-embedding, fallback to single
         if embeddings is not None:
-            self._embeddings = embeddings
+            _ctx_embeddings.set(embeddings)
         elif embedding is not None and search_request and search_request.semantic:
             sem_list = search_request.semantic if isinstance(search_request.semantic, list) else [search_request.semantic]
-            self._embeddings = [(sem_list[0], embedding)]
+            _ctx_embeddings.set([(sem_list[0], embedding)])
         else:
-            self._embeddings = []
+            _ctx_embeddings.set([])
 
         # Extract first boost embedding for backward-compat helpers
-        boost_embs = [(sq, emb) for sq, emb in self._embeddings if sq.mode == SemanticMode.BOOST]
-        self._first_boost_emb = boost_embs[0][1] if boost_embs else None
+        boost_embs = [(sq, emb) for sq, emb in _ctx_embeddings.get() if sq.mode == SemanticMode.BOOST]
+        _ctx_first_boost_emb.set(boost_embs[0][1] if boost_embs else None)
 
         handler = {
             GraphQueryType.CATEGORY_DIVERSITY: self._category_diversity,
@@ -249,7 +260,7 @@ class GraphEngine:
             GraphQueryType.GRAPH_INTERSECTION: self._graph_intersection,
         }[graph_query.type]
 
-        result = await handler(graph_query, search_request, self._first_boost_emb)
+        result = await handler(graph_query, search_request, _ctx_first_boost_emb.get())
         result.took_ms = int((time.monotonic() - start) * 1000)
 
         # ── Post-processing: aggregations (applies to any graph type) ──
@@ -390,7 +401,7 @@ class GraphEngine:
             q: dict[str, Any] = {"match_all": {}}
         else:
             # Pass embeddings so exclude-mode semantic queries are available
-            exclude_embs = [(sq, emb) for sq, emb in self._embeddings if sq.mode == SemanticMode.EXCLUDE]
+            exclude_embs = [(sq, emb) for sq, emb in _ctx_embeddings.get() if sq.mode == SemanticMode.EXCLUDE]
             builder = QueryBuilder(search_request, embedding, embeddings=exclude_embs if exclude_embs else None)
             q = builder._build_query() or {"match_all": {}}
             # Wrap in function_score if exclude semantics are present
@@ -405,8 +416,9 @@ class GraphEngine:
                     }
                 }
         # If a pipeline/projection set an active ID filter, apply it
-        if self._active_id_filter is not None:
-            q = {"bool": {"must": [q], "filter": [{"terms": {"arxiv_id": self._active_id_filter}}]}}
+        _id_filter = _ctx_active_id_filter.get()
+        if _id_filter is not None:
+            q = {"bool": {"must": [q], "filter": [{"terms": {"arxiv_id": _id_filter}}]}}
         return q
 
     def _build_knn(
@@ -418,7 +430,7 @@ class GraphEngine:
         if search_request is None or embedding is None:
             return None
         # Build using multi-embedding if available, else single
-        boost_embs = [(sq, emb) for sq, emb in self._embeddings if sq.mode == SemanticMode.BOOST]
+        boost_embs = [(sq, emb) for sq, emb in _ctx_embeddings.get() if sq.mode == SemanticMode.BOOST]
         if boost_embs:
             builder = QueryBuilder(search_request, embeddings=boost_embs)
         else:
@@ -1657,7 +1669,7 @@ class GraphEngine:
         limit = min(gq.limit or 50, self.MAX_RESULTS)
         threshold = gq.similarity_threshold
 
-        if not self._first_boost_emb:
+        if not _ctx_first_boost_emb.get():
             return GraphResponse(
                 nodes=[], edges=[], total=0, took_ms=0,
                 metadata={"error": "semantic boost query required for paper_similarity"},
@@ -6883,13 +6895,13 @@ class GraphEngine:
             step_emb = emb if step_idx == 0 and current_paper_ids is None else None
 
             # Restrict handlers that use _base_query to previous step's IDs
-            prev_filter = self._active_id_filter
+            prev_filter = _ctx_active_id_filter.get()
             if current_paper_ids is not None:
-                self._active_id_filter = current_paper_ids[:2000]
+                _ctx_active_id_filter.set(current_paper_ids[:2000])
             try:
                 result = await handler(step_gq, step_sr, step_emb)
             finally:
-                self._active_id_filter = prev_filter
+                _ctx_active_id_filter.set(prev_filter)
 
             # Extract paper IDs from result nodes
             paper_ids = [n.id for n in result.nodes if n.type == "paper"]
@@ -7214,12 +7226,12 @@ class GraphEngine:
 
         # Pass projected_sr so handlers using _base_query are limited to projected IDs.
         # seed_arxiv_ids on algo_gq constrains _build_citation_subgraph users.
-        prev_filter = self._active_id_filter
-        self._active_id_filter = projected_ids
+        prev_filter = _ctx_active_id_filter.get()
+        _ctx_active_id_filter.set(projected_ids)
         try:
             result = await handler(algo_gq, projected_sr, None)
         finally:
-            self._active_id_filter = prev_filter
+            _ctx_active_id_filter.set(prev_filter)
 
         # Annotate with subgraph metadata
         result.metadata["subgraph_projection"] = {
@@ -7461,7 +7473,7 @@ class GraphEngine:
                     metadata={"error": f"Sub-query {i + 1}: {sub_gq.type.value} cannot be nested inside {mode}"},
                 )
             try:
-                sub_result = await self.execute(sub_gq, sr, embeddings=self._embeddings)
+                sub_result = await self.execute(sub_gq, sr, embeddings=_ctx_embeddings.get())
             except Exception as e:
                 return GraphResponse(
                     nodes=[], edges=[], total=0, took_ms=0,
