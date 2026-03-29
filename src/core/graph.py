@@ -1586,7 +1586,6 @@ class GraphEngine:
             )
         ]
         edges: list[GraphEdge] = []
-        relation = "cites" if direction == "references" else "cited_by"
 
         for bucket in linked_resp["aggregations"]["authors_nested"]["by_author"]["buckets"][:limit]:
             name = bucket["key"]
@@ -1597,9 +1596,9 @@ class GraphEngine:
                 properties={"paper_count": bucket["doc_count"]},
             ))
             if direction == "references":
-                edges.append(GraphEdge(source=seed, target=name, relation=relation, weight=bucket["doc_count"]))
+                edges.append(GraphEdge(source=seed, target=name, relation="cites", weight=bucket["doc_count"]))
             else:
-                edges.append(GraphEdge(source=name, target=seed, relation=relation, weight=bucket["doc_count"]))
+                edges.append(GraphEdge(source=name, target=seed, relation="cites", weight=bucket["doc_count"]))
 
         return GraphResponse(
             nodes=nodes, edges=edges,
@@ -4059,8 +4058,8 @@ class GraphEngine:
                 degree[aid] = len(in_edges.get(aid, set())) + len(out_edges.get(aid, set()))
 
         N = len(paper_data)
-        # Normalized centrality
-        norm = max(N - 1, 1)
+        # Normalized centrality — max total degree in directed graph is 2*(N-1)
+        norm = max(2 * (N - 1), 1) if mode == "total" else max(N - 1, 1)
 
         # Sort by degree descending
         ranked = sorted(degree.items(), key=lambda x: -x[1])[:limit]
@@ -5418,7 +5417,7 @@ class GraphEngine:
 
         diameter = max((eccentricity[v] for v in lc_nodes), default=0)
         radius = min((eccentricity[v] for v in lc_nodes), default=0)
-        center = [v for v in node_list if eccentricity[v] == radius and radius > 0]
+        center = [v for v in lc_nodes if eccentricity[v] == radius]
 
         # Sort by eccentricity (center nodes first)
         ranked = sorted(node_list, key=lambda v: (eccentricity[v], -reachable_count[v]))[:limit]
@@ -6230,7 +6229,9 @@ class GraphEngine:
                     if pid not in seen_p:
                         seen_p.add(pid)
                         src = paper_data.get(pid, {"arxiv_id": pid})
-                        nodes.append(self._make_paper_node(src, {"shared_categories": w}))
+                        nodes.append(self._make_paper_node(src, {
+                            "category_count": len(paper_cats.get(pid, set())),
+                        }))
                 edges_out.append(GraphEdge(source=a, target=b, relation="shared_category", weight=w))
 
             return GraphResponse(
@@ -6611,11 +6612,22 @@ class GraphEngine:
                 return obj
             return src.get(prop)
 
+        _KNOWN_PROPERTIES = {
+            "citations", "date", "submitted_date", "primary_category",
+            "categories", "has_github", "page_count", "title", "authors",
+            "citation_stats", "abstract",
+        }
+
         def _resolve_value(ref: str, assignment: dict[str, str | None]) -> Any:
             """Resolve either alias.property or literal value."""
             if "." in ref:
                 parts = ref.split(".", 1)
-                if parts[0] in alias_order:
+                # Only interpret as alias.property when the alias is a known
+                # pattern node AND the property is recognized.  This avoids
+                # treating dotted literals like "cs.AI" as alias references.
+                if parts[0] in alias_order and (
+                    parts[1] in _KNOWN_PROPERTIES or "." in parts[1]
+                ):
                     return _resolve_property(parts[0], parts[1], assignment)
             # Try as literal
             if ref.lower() == "true":
@@ -6639,8 +6651,10 @@ class GraphEngine:
                 skip = False
                 for ref in (wc.left, wc.right):
                     if "." in ref:
-                        alias_part = ref.split(".", 1)[0]
-                        if alias_part in alias_order and alias_part not in assignment:
+                        alias_part, prop_part = ref.split(".", 1)
+                        if (alias_part in alias_order
+                                and (prop_part in _KNOWN_PROPERTIES or "." in prop_part)
+                                and alias_part not in assignment):
                             skip = True
                             break
                 if skip:
@@ -7508,11 +7522,15 @@ class GraphEngine:
                 if nid not in visited and len(nodes_out) < until_max_nodes:
                     visited.add(nid)
                     queue.append((nid, depth + 1))
-                    if collect_edges:
-                        if nid in outgoing_set:
-                            edges_out.append(GraphEdge(source=current_id, target=nid, relation="cites"))
-                        else:
-                            edges_out.append(GraphEdge(source=nid, target=current_id, relation="cited_by"))
+
+            # Record edges separately — a node can appear in both outgoing and incoming
+            if collect_edges:
+                for nid in outgoing_ids:
+                    if nid in visited or len(nodes_out) < until_max_nodes:
+                        edges_out.append(GraphEdge(source=current_id, target=nid, relation="cites"))
+                for nid in incoming_ids:
+                    if nid in visited or len(nodes_out) < until_max_nodes:
+                        edges_out.append(GraphEdge(source=nid, target=current_id, relation="cites"))
 
         # Filter out dangling edges (nodes that failed predicate or weren't fetched)
         if collect_edges:
