@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ── ArXiv Paper Model ──
@@ -92,6 +92,14 @@ class DateRange(BaseModel):
     gte: datetime | None = None
     lte: datetime | None = None
 
+    @model_validator(mode="after")
+    def _check_range(self) -> "DateRange":
+        if self.gte is not None and self.lte is not None and self.gte > self.lte:
+            raise ValueError(
+                f"DateRange gte ({self.gte.date()}) must not exceed lte ({self.lte.date()})"
+            )
+        return self
+
 
 class SemanticMode(str, Enum):
     BOOST = "boost"
@@ -150,9 +158,9 @@ class SearchRequest(BaseModel):
     min_references: int | None = Field(default=None, ge=0)
 
     # Category filters
-    categories: list[str] | None = None
+    categories: list[str] | None = Field(default=None, max_length=50)
     primary_category: str | None = None
-    exclude_categories: list[str] | None = None
+    exclude_categories: list[str] | None = Field(default=None, max_length=50)
 
     # Date filters
     submitted_date: DateRange | None = None
@@ -398,8 +406,8 @@ class PipelineStep(BaseModel):
 
 class SubgraphFilter(BaseModel):
     """Defines which nodes/edges to include in a projected subgraph."""
-    categories: list[str] | None = Field(default=None, description="Only papers in these categories")
-    exclude_categories: list[str] | None = Field(default=None, description="Exclude papers in these categories")
+    categories: list[str] | None = Field(default=None, max_length=50, description="Only papers in these categories")
+    exclude_categories: list[str] | None = Field(default=None, max_length=50, description="Exclude papers in these categories")
     primary_category: str | None = Field(default=None, description="Only papers with this primary category")
     date_from: str | None = Field(default=None, description="Papers submitted after this date (YYYY-MM-DD)")
     date_to: str | None = Field(default=None, description="Papers submitted before this date (YYYY-MM-DD)")
@@ -626,9 +634,9 @@ class GraphSearchRequest(BaseModel):
     min_citations: int | None = Field(default=None, ge=0)
     max_citations: int | None = Field(default=None, ge=0)
     min_references: int | None = Field(default=None, ge=0)
-    categories: list[str] | None = None
+    categories: list[str] | None = Field(default=None, max_length=50)
     primary_category: str | None = None
-    exclude_categories: list[str] | None = None
+    exclude_categories: list[str] | None = Field(default=None, max_length=50)
     submitted_date: DateRange | None = None
     updated_date: DateRange | None = None
     has_github: bool | None = None
