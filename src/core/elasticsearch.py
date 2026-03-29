@@ -184,8 +184,9 @@ def get_index_mapping(embedding_dim: int) -> dict:
 async def ensure_index(client: AsyncElasticsearch, index: str, embedding_dim: int) -> None:
     try:
         exists = await client.indices.exists(index=index)
-    except Exception:
-        exists = False
+    except Exception as e:
+        logger.error("index_check_failed", index=index, error=str(e))
+        raise
     if not exists:
         mapping = get_index_mapping(embedding_dim)
         await client.indices.create(index=index, body=mapping)

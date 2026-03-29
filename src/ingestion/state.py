@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import structlog
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, NotFoundError
 
 logger = structlog.get_logger()
 
@@ -38,7 +38,7 @@ async def get_state(client: AsyncElasticsearch, source: str) -> dict | None:
     try:
         resp = await client.get(index=STATE_INDEX, id=source)
         return resp["_source"]
-    except Exception:
+    except NotFoundError:
         return None
 
 
