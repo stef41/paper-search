@@ -2785,7 +2785,7 @@ class GraphEngine:
                             # Update parent's best with 1 + child's best
                             stack[-1] = (parent[0], parent[1], max(parent[2], 1 + best))
                         else:
-                            result = best
+                            result = max(result, best)
                 return result
 
             chains: list[tuple[str, int]] = []

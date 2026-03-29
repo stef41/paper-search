@@ -287,7 +287,7 @@ async def seed_category(
 
         count = await index_batch(es, index, papers)
         total_indexed += count
-        start += len(papers)
+        start += fetch_size
 
         logger.info(
             "seed_progress",

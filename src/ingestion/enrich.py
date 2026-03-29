@@ -218,6 +218,16 @@ async def enrich_papers(
                         }},
                     )
                     total_enriched += 1
+                else:
+                    # Mark paper so it's not retried on every future run
+                    await es.update(
+                        index=settings.es_index,
+                        id=arxiv_id,
+                        body={"doc": {
+                            "enrichment_source": "s2_not_found",
+                            "enriched_at": datetime.now(timezone.utc).isoformat(),
+                        }},
+                    )
 
                     if total_enriched % 10 == 0:
                         elapsed = time.monotonic() - start_time

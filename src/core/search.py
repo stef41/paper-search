@@ -396,12 +396,17 @@ class QueryBuilder:
         }
 
         if self.req.sort_by == SortField.RELEVANCE:
-            return ["_score", {"submitted_date": {"order": "desc", "missing": "_last"}}]
+            return [
+                "_score",
+                {"submitted_date": {"order": "desc", "missing": "_last"}},
+                {"arxiv_id": {"order": "asc"}},
+            ]
 
         field = sort_map[self.req.sort_by]
         return [
             {field: {"order": self.req.sort_order.value, "missing": "_last"}},
             "_score",
+            {"arxiv_id": {"order": "asc"}},
         ]
 
 
