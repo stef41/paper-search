@@ -593,6 +593,8 @@ class GraphEngine:
         for hit in resp["hits"]["hits"]:
             src = hit["_source"]
             cats = src.get("categories") or []
+            if len(cats) < min_cats:
+                continue
             cat_set.update(cats)
             nodes.append(self._make_paper_node(src, {"category_count": len(cats)}))
             # Add edges from paper → each category
@@ -630,7 +632,7 @@ class GraphEngine:
             return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
                                  metadata={"error": "seed_author required"})
 
-        depth = min(gq.depth or 1, 5)
+        depth = min(gq.depth or 1, 2)
         limit = min(gq.limit or 100, self.MAX_RESULTS)
 
         # Build the combined query: user filters + must match seed author
@@ -6946,6 +6948,14 @@ class GraphEngine:
         # The final step's result IS the pipeline output (already executed in the loop)
         final_result = result
 
+        # If the last step had a filter, trim the result to the filtered IDs
+        if gq.pipeline_steps and gq.pipeline_steps[-1].filter_property and current_paper_ids is not None:
+            retained = set(current_paper_ids)
+            final_result.nodes = [n for n in final_result.nodes if n.id in retained]
+            final_result.edges = [e for e in final_result.edges
+                                  if e.source in retained and e.target in retained]
+            final_result.total = len(final_result.nodes)
+
         # Annotate with pipeline metadata
         final_result.metadata["pipeline_steps"] = step_results
         final_result.metadata["total_steps"] = len(gq.pipeline_steps)
@@ -7332,13 +7342,16 @@ class GraphEngine:
                 if "primary_category" in predicate:
                     if src.get(F.node_primary_category) != predicate["primary_category"]:
                         continue
+                if "has_github" in predicate:
+                    if src.get("has_github") != predicate["has_github"]:
+                        continue
                 if "date_from" in predicate:
                     ts = src.get(F.node_timestamp, "")
-                    if ts and ts < predicate["date_from"]:
+                    if ts and ts[:10] < predicate["date_from"][:10]:
                         continue
                 if "date_to" in predicate:
                     ts = src.get(F.node_timestamp, "")
-                    if ts and ts > predicate["date_to"]:
+                    if ts and ts[:10] > predicate["date_to"][:10]:
                         continue
 
             nodes_out.append(self._make_paper_node(src, {"depth": depth}))
