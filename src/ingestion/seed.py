@@ -90,8 +90,9 @@ def parse_api_entry(entry) -> dict | None:
     primary_category = None
     prim_el = entry.find("arxiv:primary_category", ATOM_NS)
     if prim_el is not None:
-        primary_category = prim_el.get("term", "")
-        categories.append(primary_category)
+        primary_category = prim_el.get("term", "") or None
+        if primary_category:
+            categories.append(primary_category)
 
     for cat_el in entry.findall("atom:category", ATOM_NS):
         term = cat_el.get("term", "")
@@ -194,7 +195,10 @@ async def fetch_api_page(
         try:
             resp = await http.get(ARXIV_API_URL, params=params, timeout=60)
             if resp.status_code == 503:
-                wait = int(resp.headers.get("Retry-After", 30))
+                try:
+                    wait = int(resp.headers.get("Retry-After", 30))
+                except (ValueError, TypeError):
+                    wait = 30
                 logger.warning("arxiv_503_retry", wait=wait, attempt=attempt)
                 await asyncio.sleep(wait)
                 continue
@@ -207,7 +211,11 @@ async def fetch_api_page(
         return [], 0
 
     parser = XMLParser(resolve_entities=False, no_network=True)
-    root = fromstring(resp.content, parser=parser)
+    try:
+        root = fromstring(resp.content, parser=parser)
+    except Exception:
+        logger.warning("xml_parse_error", content_len=len(resp.content))
+        return [], 0
 
     total_str = root.findtext("opensearch:totalResults", "0", ATOM_NS)
     total = int(total_str)

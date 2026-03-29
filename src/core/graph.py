@@ -683,11 +683,14 @@ class GraphEngine:
         # Seed author node — resolve canonical name from aggregation (case-insensitive)
         seed_lower = seed.lower()
         canonical_seed = seed
+        seed_count = 0
         for k in list(author_papers.keys()):
             if k.lower() == seed_lower:
-                canonical_seed = k
-                break
-        seed_count = author_papers.pop(canonical_seed, total_papers)
+                if not seed_count:  # use first match as canonical name
+                    canonical_seed = k
+                seed_count += author_papers.pop(k)
+        if not seed_count:
+            seed_count = total_papers
         seed = canonical_seed
         nodes.append(GraphNode(
             id=seed, label=seed, type="author",
@@ -695,10 +698,11 @@ class GraphEngine:
         ))
         seen_authors.add(seed)
 
-        # 1st-degree co-authors
-        first_degree = sorted(author_papers.items(), key=lambda x: -x[1])[:limit]
+        # 1st-degree co-authors — reserve budget for 2nd-degree if depth>=2
+        first_limit = (limit // 2) if depth >= 2 else limit
+        first_degree = sorted(author_papers.items(), key=lambda x: -x[1])[:first_limit]
         for name, count in first_degree:
-            if name not in seen_authors:
+            if name not in seen_authors and name.lower() != seed_lower:
                 nodes.append(GraphNode(
                     id=name, label=name, type="author",
                     properties={"paper_count": count, "depth": 1},
@@ -2041,7 +2045,28 @@ class GraphEngine:
         if gq.seed_arxiv_ids:
             seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:10000]}}
         elif gq.seed_arxiv_id:
-            seed_query = {"term": {"arxiv_id": gq.seed_arxiv_id}}
+            # Fetch the seed paper first, then find papers sharing its references
+            seed_body: dict[str, Any] = {
+                "query": {"term": {"arxiv_id": gq.seed_arxiv_id}},
+                "size": 1,
+                "_source": ["arxiv_id", "reference_ids"],
+            }
+            seed_resp = await self._do_search(seed_body, sr, emb)
+            seed_refs: list[str] = []
+            for hit in seed_resp["hits"]["hits"]:
+                seed_refs = hit["_source"].get("reference_ids", []) or []
+            if not seed_refs:
+                return GraphResponse(
+                    nodes=[], edges=[], total=0, took_ms=0,
+                    metadata={"error": "seed paper has no references for coupling"},
+                )
+            # Find papers that reference at least one of the same references
+            seed_query = {
+                "bool": {
+                    "filter": [{"terms": {"reference_ids": seed_refs}}],
+                    "must": [{"exists": {"field": "reference_ids"}}],
+                }
+            }
         else:
             base = self._base_query(sr, emb)
             seed_query = {
@@ -2112,7 +2137,28 @@ class GraphEngine:
         if gq.seed_arxiv_ids:
             seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:10000]}}
         elif gq.seed_arxiv_id:
-            seed_query = {"term": {"arxiv_id": gq.seed_arxiv_id}}
+            # Fetch the seed paper first, then find papers cited alongside it
+            seed_body: dict[str, Any] = {
+                "query": {"term": {"arxiv_id": gq.seed_arxiv_id}},
+                "size": 1,
+                "_source": ["arxiv_id", "cited_by_ids"],
+            }
+            seed_resp = await self._do_search(seed_body, sr, emb)
+            seed_citers: list[str] = []
+            for hit in seed_resp["hits"]["hits"]:
+                seed_citers = hit["_source"].get("cited_by_ids", []) or []
+            if not seed_citers:
+                return GraphResponse(
+                    nodes=[], edges=[], total=0, took_ms=0,
+                    metadata={"error": "seed paper has no citations for co-citation"},
+                )
+            # Find papers also cited by the same papers
+            seed_query = {
+                "bool": {
+                    "filter": [{"terms": {"cited_by_ids": seed_citers}}],
+                    "must": [{"exists": {"field": "cited_by_ids"}}],
+                }
+            }
         else:
             base = self._base_query(sr, emb)
             seed_query = {
@@ -2223,8 +2269,11 @@ class GraphEngine:
         current_frontier: dict[str, dict] = {}
         for hit in seed_resp["hits"]["hits"]:
             src = hit["_source"]
+            aid = src.get("arxiv_id", "")
+            if not aid:
+                continue
             _add_paper(src, 0)
-            current_frontier[src.get("arxiv_id", "")] = src
+            current_frontier[aid] = src
 
         # Walk hops
         for hop in range(1, max_hops + 1):
@@ -2254,8 +2303,11 @@ class GraphEngine:
             next_frontier: dict[str, dict] = {}
             for hit in hop_resp["hits"]["hits"]:
                 src = hit["_source"]
+                aid = src.get("arxiv_id", "")
+                if not aid:
+                    continue
                 _add_paper(src, hop)
-                next_frontier[src.get("arxiv_id", "")] = src
+                next_frontier[aid] = src
 
             current_frontier = next_frontier
             if len(nodes) >= limit * 10:
@@ -2936,11 +2988,6 @@ class GraphEngine:
                         visited.add(nbr)
                         queue.append(nbr)
             components.append(component)
-
-        # Also add isolated papers (no links in subgraph) as singleton components
-        for aid in node_ids:
-            if aid not in visited:
-                components.append([aid])
 
         components.sort(key=lambda x: -len(x))
 
@@ -3879,7 +3926,7 @@ class GraphEngine:
         for aid, src in paper_data.items():
             for a in (src.get("authors") or [])[:50]:
                 name = a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")
-                if name:
+                if name and aid not in author_papers[name]:
                     author_papers[name].append(aid)
         for name, papers in author_papers.items():
             if len(papers) > 1:

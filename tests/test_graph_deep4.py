@@ -513,7 +513,7 @@ async def test_katz_metadata_fields(c: httpx.AsyncClient):
 
 async def test_katz_with_damping_and_iterations(c: httpx.AsyncClient):
     """Katz centrality with custom damping_factor and iterations."""
-    name = "katz_centrality:with_seed_paper"
+    name = "katz_centrality:with_damping_and_iterations"
     data = await post_graph(c, {
         "graph": {
             "type": "katz_centrality",
@@ -688,7 +688,7 @@ async def test_all_shortest_paths_metadata_fields(c: httpx.AsyncClient):
 
 async def test_all_shortest_paths_with_max_hops(c: httpx.AsyncClient):
     """Test with max_hops parameter."""
-    name = "all_shortest_paths:with_seed_paper"
+    name = "all_shortest_paths:with_max_hops"
     data = await post_graph(c, {
         "graph": {
             "type": "all_shortest_paths",
@@ -1066,7 +1066,7 @@ async def test_random_walk_metadata_fields(c: httpx.AsyncClient):
 
 async def test_random_walk_with_teleport(c: httpx.AsyncClient):
     """Random walk with custom teleport_prob."""
-    name = "random_walk:with_seed_paper"
+    name = "random_walk:with_teleport"
     data = await post_graph(c, {
         "graph": {
             "type": "random_walk",

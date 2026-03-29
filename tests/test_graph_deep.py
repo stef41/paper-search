@@ -165,6 +165,9 @@ async def test_multihop_direction_references(c: httpx.AsyncClient):
         return
     # All edges should have relation "cites" and source=seed when hop=0→1
     cites_edges = [e for e in data["edges"] if e["relation"] == "cites"]
+    if not cites_edges:
+        fail(name, data["took_ms"], "No cites edges found in references direction")
+        return
     ok(name, data["took_ms"], f"{len(cites_edges)}/{len(data['edges'])} cites edges")
 
 
@@ -230,7 +233,10 @@ async def test_multihop_seed_ids_multiple(c: httpx.AsyncClient):
         return
     node_ids = {n["id"] for n in data["nodes"]}
     has_both = CONNECTED_PAPER in node_ids and BIG_REFS_PAPER in node_ids
-    ok(name, data["took_ms"], f"Both seeds present: {has_both}, {len(data['nodes'])} nodes")
+    if not has_both:
+        fail(name, data["took_ms"], f"Not all seeds in nodes: {CONNECTED_PAPER in node_ids}, {BIG_REFS_PAPER in node_ids}")
+        return
+    ok(name, data["took_ms"], f"Both seeds present, {len(data['nodes'])} nodes")
 
 
 async def test_multihop_with_category_filter(c: httpx.AsyncClient):

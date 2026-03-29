@@ -232,7 +232,11 @@ def stream_kaggle_file(
             if skip_ids and record.get("id") in skip_ids:
                 continue
 
-            parsed = parse_kaggle_record(record)
+            try:
+                parsed = parse_kaggle_record(record)
+            except Exception:
+                skipped += 1
+                continue
             if parsed:
                 count += 1
                 yield parsed

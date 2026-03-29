@@ -1330,6 +1330,9 @@ async def test_cross_empty_results_graceful(c: httpx.AsyncClient):
         if data is not None:
             ok_count += 1
     # We accept partial success since some algos may 422 on zero results
+    if ok_count == 0:
+        fail(name, 0, f"0/6 algorithms handled empty query gracefully")
+        return
     ok(name, 0, f"{ok_count}/6 algorithms handled empty query gracefully")
 
 

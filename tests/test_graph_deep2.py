@@ -231,8 +231,8 @@ async def test_wsp_unreachable_target(c: httpx.AsyncClient):
     if meta.get("path_found") is False or "error" in meta or "not found" in str(meta).lower():
         ok(name, data.get("took_ms", 0), f"Correctly handled unreachable: {meta}")
         return
-    # If somehow it found a path, that's weird but not necessarily wrong
-    ok(name, data.get("took_ms", 0), f"Got response: {meta}")
+    # If it found a path to a nonexistent paper, that's a bug
+    fail(name, data.get("took_ms", 0), f"Found path to unreachable paper: {meta}")
 
 
 async def test_wsp_same_source_target(c: httpx.AsyncClient):
@@ -1261,7 +1261,7 @@ async def test_lp_empty_result_graceful(c: httpx.AsyncClient):
     if "error" in meta or meta.get("predictions_returned", 0) == 0:
         ok(name, data.get("took_ms", 0), f"Graceful empty: {meta.get('error', 'no predictions')}")
     else:
-        ok(name, data.get("took_ms", 0), f"Got {meta.get('predictions_returned')} predictions")
+        fail(name, data.get("took_ms", 0), f"Expected empty but got {meta.get('predictions_returned')} predictions")
 
 
 # ═══════════════════════════════════════════════════════
@@ -1286,6 +1286,9 @@ async def test_cross_same_query_all_centrality(c: httpx.AsyncClient):
     cc_meta = d_cc.get("metadata", {})
     bc_ok = "error" not in bc_meta and len(d_bc.get("nodes", [])) > 0
     cc_ok = "error" not in cc_meta and len(d_cc.get("nodes", [])) > 0
+    if not bc_ok and not cc_ok:
+        fail(name, elapsed, f"Both centrality algorithms returned no results")
+        return
     ok(name, elapsed,
        f"bc: {len(d_bc.get('nodes', []))} nodes, cc: {len(d_cc.get('nodes', []))} nodes, "
        f"bc_ok={bc_ok}, cc_ok={cc_ok}")
@@ -1331,6 +1334,10 @@ async def test_cross_link_prediction_all_methods(c: httpx.AsyncClient):
             results_per_method[method] = -1
     elapsed = int((time.monotonic() - start) * 1000)
     summary = ", ".join(f"{m}={v}" for m, v in results_per_method.items())
+    failed_methods = [m for m, v in results_per_method.items() if v <= 0]
+    if len(failed_methods) == len(methods):
+        fail(name, elapsed, f"All methods returned no results: {summary}")
+        return
     ok(name, elapsed, summary)
 
 
