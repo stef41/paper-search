@@ -2453,6 +2453,7 @@ class GraphEngine:
         ranks: dict[str, float] = {a: 1.0 / N for a in all_nodes}
 
         converged_at = max_iter
+        did_converge = False
         for it in range(max_iter):
             # Redistribute rank from dangling nodes (no outgoing edges)
             dangling_sum = sum(ranks[n] for n in all_nodes if not out_edges.get(n))
@@ -2468,6 +2469,7 @@ class GraphEngine:
             ranks = new_ranks
             if max_delta < 1e-6:
                 converged_at = it + 1
+                did_converge = True
                 break
 
         # Return top-ranked papers
@@ -2499,7 +2501,7 @@ class GraphEngine:
             metadata={
                 "damping_factor": damping,
                 "iterations": converged_at,
-                "converged": converged_at < max_iter,
+                "converged": did_converge,
                 "papers_in_subgraph": N,
                 "edges_in_subgraph": sum(len(v) for v in out_edges.values()),
                 "max_pagerank": round(sorted_ranks[0][1], 8) if sorted_ranks else 0,
@@ -4467,6 +4469,12 @@ class GraphEngine:
                     for v in in_edges.get(u, set()):
                         if v not in active:
                             p = 1.0 / in_deg[v]
+                            if random.random() < p:
+                                active.add(v)
+                                next_frontier.append(v)
+                    for v in out_edges.get(u, set()):
+                        if v not in active:
+                            p = 0.5 / max(len(out_edges.get(u, set())), 1)
                             if random.random() < p:
                                 active.add(v)
                                 next_frontier.append(v)
