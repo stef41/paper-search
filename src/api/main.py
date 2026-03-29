@@ -118,16 +118,18 @@ async def _resolve_embeddings(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    if any(k in ("changeme-key-1", "") for k in settings.api_key_list):
+    if not settings.api_key_list or any(k == "changeme-key-1" for k in settings.api_key_list):
         logger.warning("SECURITY: using default or empty API key — set API_KEYS env var before deploying")
     es = await get_es_client()
-    await ensure_index(es, settings.es_index, settings.embedding_dim)
-    await get_redis_client()
-    logger.info("app_started")
-    yield
-    await close_es_client()
-    await close_redis_client()
-    logger.info("app_stopped")
+    try:
+        await ensure_index(es, settings.es_index, settings.embedding_dim)
+        await get_redis_client()
+        logger.info("app_started")
+        yield
+    finally:
+        await close_es_client()
+        await close_redis_client()
+        logger.info("app_stopped")
 
 
 def create_app() -> FastAPI:
@@ -164,7 +166,23 @@ def create_app() -> FastAPI:
         max_age=3600,
     )
 
-    # ── IP-level DDoS rate limiter (runs before everything else) ──
+    # Security headers middleware (registered before ddos_guard so it wraps it —
+    # Starlette reverses registration order, making earlier = outer)
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'" if request.url.path not in ("/docs", "/redoc", "/openapi.json")
+            else "default-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' https://fastapi.tiangolo.com data:; font-src 'self' data:"
+        )
+        return response
+
+    # ── IP-level DDoS rate limiter (registered after security_headers so it's inner) ──
     _ddos_limit, _ddos_window_str = settings.ddos_rate_limit.split("/")
     _ddos_max = int(_ddos_limit)
     _window_map = {"second": 1, "minute": 60, "hour": 3600}
@@ -212,21 +230,6 @@ def create_app() -> FastAPI:
 
         hits.append(now)
         response = await call_next(request)
-        return response
-
-    # Security headers middleware
-    @app.middleware("http")
-    async def security_headers(request: Request, call_next):
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'none'" if request.url.path not in ("/docs", "/redoc", "/openapi.json")
-            else "default-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' https://fastapi.tiangolo.com data:; font-src 'self' data:"
-        )
         return response
 
     # ── Routes ──

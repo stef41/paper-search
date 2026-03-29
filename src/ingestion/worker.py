@@ -72,6 +72,8 @@ def parse_oai_record(record_xml: Any) -> dict | None:
 
     title = arx.findtext("arx:title", "", OAI_NAMESPACES).strip()
     abstract = arx.findtext("arx:abstract", "", OAI_NAMESPACES).strip()
+    if not title or not abstract:
+        return None
     categories_str = arx.findtext("arx:categories", "", OAI_NAMESPACES).strip()
     categories = categories_str.split() if categories_str else []
     comments = arx.findtext("arx:comments", None, OAI_NAMESPACES)
@@ -142,6 +144,9 @@ def parse_oai_record(record_xml: Any) -> dict | None:
 
     page_count = estimate_page_count(comments)
 
+    # Extract OAI datestamp (used for harvest resumption, not indexed)
+    oai_datestamp = header.findtext("oai:datestamp", "", OAI_NAMESPACES).strip()
+
     first_author = author_list[0]["name"] if author_list else None
 
     return {
@@ -165,6 +170,7 @@ def parse_oai_record(record_xml: Any) -> dict | None:
         "abstract_url": f"https://arxiv.org/abs/{arxiv_id}",
         "first_author": first_author,
         "first_author_h_index": None,
+        "_oai_datestamp": oai_datestamp,
         "citation_stats": {
             "total_citations": 0,
             "avg_citation_age_years": None,
@@ -331,10 +337,11 @@ async def run_ingestion_cycle(
             page_count += 1
 
             if papers:
-                # Track latest date seen
+                # Track latest OAI datestamp for harvest resumption
                 for p in papers:
-                    if p.get("submitted_date") and (not current_date or p["submitted_date"] > current_date):
-                        current_date = p["submitted_date"][:10]
+                    ds = p.pop("_oai_datestamp", None)
+                    if ds and (not current_date or ds > current_date):
+                        current_date = ds[:10]
 
                 try:
                     if not skip_embeddings:

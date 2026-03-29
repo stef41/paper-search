@@ -220,6 +220,7 @@ async def enrich_papers(
                         )
                     except Exception as e:
                         logger.warning("paper_update_failed", arxiv_id=arxiv_id, error=str(e))
+                        await asyncio.sleep(S2_DELAY)
                         continue
                     total_enriched += 1
                 else:
@@ -235,6 +236,7 @@ async def enrich_papers(
                         )
                     except Exception as e:
                         logger.warning("paper_update_failed", arxiv_id=arxiv_id, error=str(e))
+                        await asyncio.sleep(S2_DELAY)
                         continue
 
                 if total_enriched % 10 == 0 and total_enriched > 0:

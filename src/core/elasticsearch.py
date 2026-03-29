@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import structlog
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, BadRequestError
 
 from src.core.config import get_settings
 
@@ -44,9 +44,9 @@ def get_index_mapping(embedding_dim: int) -> dict:
                         "tokenizer": "standard",
                         "filter": [
                             "lowercase",
+                            "arxiv_synonym",
                             "stop",
                             "snowball",
-                            "arxiv_synonym",
                         ],
                     },
                     "keyword_lowercase": {
@@ -200,7 +200,13 @@ async def ensure_index(client: AsyncElasticsearch, index: str, embedding_dim: in
         raise
     if not exists:
         mapping = get_index_mapping(embedding_dim)
-        await client.indices.create(index=index, body=mapping)
-        logger.info("created_index", index=index)
+        try:
+            await client.indices.create(index=index, body=mapping)
+            logger.info("created_index", index=index)
+        except BadRequestError as e:
+            if "resource_already_exists_exception" in str(e):
+                logger.info("index_created_by_another_worker", index=index)
+            else:
+                raise
     else:
         logger.info("index_exists", index=index)

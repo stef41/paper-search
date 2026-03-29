@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import structlog
-from elasticsearch import AsyncElasticsearch, NotFoundError
+from elasticsearch import AsyncElasticsearch, BadRequestError, NotFoundError
 
 logger = structlog.get_logger()
 
@@ -14,15 +14,16 @@ STATE_INDEX = ".arxiv_harvest_state"
 
 async def ensure_state_index(client: AsyncElasticsearch) -> None:
     if not await client.indices.exists(index=STATE_INDEX):
-        await client.indices.create(
-            index=STATE_INDEX,
-            body={
-                "settings": {"number_of_shards": 1, "number_of_replicas": 0},
-                "mappings": {
-                    "properties": {
-                        "source": {"type": "keyword"},
-                        "last_harvested_date": {"type": "date"},
-                        "resumption_token": {"type": "keyword"},
+        try:
+            await client.indices.create(
+                index=STATE_INDEX,
+                body={
+                    "settings": {"number_of_shards": 1, "number_of_replicas": 0},
+                    "mappings": {
+                        "properties": {
+                            "source": {"type": "keyword"},
+                            "last_harvested_date": {"type": "date"},
+                            "resumption_token": {"type": "keyword"},
                         "total_harvested": {"type": "long"},
                         "last_run": {"type": "date"},
                         "status": {"type": "keyword"},
@@ -31,6 +32,10 @@ async def ensure_state_index(client: AsyncElasticsearch) -> None:
                 },
             },
         )
+        except BadRequestError as e:
+            if "resource_already_exists_exception" not in str(e):
+                raise
+
 
 
 async def get_state(client: AsyncElasticsearch, source: str) -> dict | None:
