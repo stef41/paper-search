@@ -87,7 +87,8 @@ class FieldMapping:
         """Fields needed for citation subgraph construction."""
         return [self.node_id, self.node_label, self.node_categories,
                 self.node_primary_category, self.node_authors, self.node_timestamp,
-                self.node_metrics, self.outgoing_edges, self.incoming_edges]
+                self.node_metrics, self.outgoing_edges, self.incoming_edges,
+                self.has_code]
 
     def extract_id(self, src: dict) -> str:
         return src.get(self.node_id, "")

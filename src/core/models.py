@@ -360,6 +360,14 @@ class PatternEdge(BaseModel):
     max_hops: int = Field(default=1, ge=1, le=10)
     optional: bool = Field(default=False, description="If true, the match succeeds even when this edge has no target (OPTIONAL MATCH)")
 
+    @model_validator(mode="after")
+    def _check_hops(self) -> "PatternEdge":
+        if self.min_hops > self.max_hops:
+            raise ValueError(
+                f"min_hops ({self.min_hops}) cannot exceed max_hops ({self.max_hops})"
+            )
+        return self
+
 
 class WhereCondition(BaseModel):
     """Cross-node predicate for pattern matching (like Cypher WHERE)."""
@@ -386,6 +394,15 @@ class PathFilter(BaseModel):
         description="Every node on path must match these filters (categories, has_github, etc.)")
     any_node_matches: dict[str, Any] | None = Field(default=None,
         description="At least one intermediate node must match these filters")
+
+    @model_validator(mode="after")
+    def _check_path_length(self) -> "PathFilter":
+        if (self.min_path_length is not None and self.max_path_length is not None
+                and self.min_path_length > self.max_path_length):
+            raise ValueError(
+                f"min_path_length ({self.min_path_length}) cannot exceed max_path_length ({self.max_path_length})"
+            )
+        return self
 
 
 class PipelineStep(BaseModel):
