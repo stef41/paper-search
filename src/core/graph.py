@@ -2315,15 +2315,13 @@ class GraphEngine:
                     neighbors = set(src.get("reference_ids", []) or []) | set(src.get("cited_by_ids", []) or [])
                     for nid in neighbors:
                         if nid in backward_parents:
-                            meeting_point = nid
+                            if meeting_point is None:
+                                meeting_point = nid
                             if nid not in forward_parents:
                                 forward_parents[nid] = fid
-                            break
-                        if nid not in forward_parents:
+                        elif nid not in forward_parents:
                             forward_parents[nid] = fid
                             next_forward.add(nid)
-                    if meeting_point:
-                        break
                 if meeting_point:
                     break
                 forward_frontier = next_forward
@@ -2335,15 +2333,13 @@ class GraphEngine:
                     neighbors = set(src.get("reference_ids", []) or []) | set(src.get("cited_by_ids", []) or [])
                     for nid in neighbors:
                         if nid in forward_parents:
-                            meeting_point = nid
+                            if meeting_point is None:
+                                meeting_point = nid
                             if nid not in backward_parents:
                                 backward_parents[nid] = bid
-                            break
-                        if nid not in backward_parents:
+                        elif nid not in backward_parents:
                             backward_parents[nid] = bid
                             next_backward.add(nid)
-                    if meeting_point:
-                        break
                 if meeting_point:
                     break
                 backward_frontier = next_backward
@@ -3618,7 +3614,8 @@ class GraphEngine:
             queue.sort(key=lambda x: paper_data.get(x, {}).get("submitted_date", "") or "")
 
         # Handle cycles — add remaining nodes sorted by date
-        remaining = [n for n in node_list if n not in depth]
+        topo_set = set(topo_order)
+        remaining = [n for n in node_list if n not in topo_set]
         remaining.sort(key=lambda x: paper_data.get(x, {}).get("submitted_date", "") or "")
         base_depth = (max(depth.values()) + 1) if depth else 0
         for n in remaining:
@@ -7504,13 +7501,15 @@ class GraphEngine:
             shared = ids1 & ids2
             nodes = [n for n in r1.nodes if n.id in shared][:result_limit]
             retained_ids = {n.id for n in nodes}
-            edge_set = set()
-            edges = []
-            for e in r1.edges + r2.edges:
-                ek = (e.source, e.target, e.relation)
-                if ek not in edge_set and e.source in retained_ids and e.target in retained_ids:
-                    edge_set.add(ek)
-                    edges.append(e)
+            # True edge intersection: only edges present in BOTH results
+            edge_keys_1 = {(e.source, e.target, e.relation) for e in r1.edges}
+            edge_keys_2 = {(e.source, e.target, e.relation) for e in r2.edges}
+            shared_edge_keys = edge_keys_1 & edge_keys_2
+            edge_map = {(e.source, e.target, e.relation): e for e in r1.edges}
+            edges = [
+                edge_map[ek] for ek in shared_edge_keys
+                if ek[0] in retained_ids and ek[1] in retained_ids
+            ]
 
         return GraphResponse(
             nodes=nodes,
