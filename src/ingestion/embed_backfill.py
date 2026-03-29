@@ -66,6 +66,17 @@ async def backfill_embeddings(
         title_embs = encode_texts(titles, batch_size=64)
         abstract_embs = encode_texts(abstracts, batch_size=64)
 
+        if len(title_embs) != len(titles) or len(abstract_embs) != len(abstracts):
+            logger.error(
+                "embed_length_mismatch",
+                titles=len(titles),
+                title_embs=len(title_embs),
+                abstracts=len(abstracts),
+                abstract_embs=len(abstract_embs),
+            )
+            search_after = hits[-1]["sort"]
+            continue
+
         # Bulk update
         ops = []
         for i, aid in enumerate(ids):

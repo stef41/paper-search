@@ -260,14 +260,19 @@ class GraphEngine:
             GraphQueryType.GRAPH_INTERSECTION: self._graph_intersection,
         }[graph_query.type]
 
-        result = await handler(graph_query, search_request, _ctx_first_boost_emb.get())
-        result.took_ms = int((time.monotonic() - start) * 1000)
+        try:
+            result = await handler(graph_query, search_request, _ctx_first_boost_emb.get())
+            result.took_ms = int((time.monotonic() - start) * 1000)
 
-        # ── Post-processing: aggregations (applies to any graph type) ──
-        if graph_query.aggregations:
-            result = self._apply_aggregations(result, graph_query.aggregations)
+            # ── Post-processing: aggregations (applies to any graph type) ──
+            if graph_query.aggregations:
+                result = self._apply_aggregations(result, graph_query.aggregations)
 
-        return result
+            return result
+        finally:
+            _ctx_embeddings.set([])
+            _ctx_first_boost_emb.set(None)
+            _ctx_active_id_filter.set(None)
 
     def _apply_aggregations(
         self,
