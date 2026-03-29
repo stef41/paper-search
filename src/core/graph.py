@@ -402,7 +402,7 @@ class GraphEngine:
             if pf.any_node_matches:
                 # Check intermediate nodes (exclude source and target)
                 intermediates = path[1:-1] if len(path) > 2 else []
-                if not intermediates or not any(self._node_matches_path_filter(
+                if intermediates and not any(self._node_matches_path_filter(
                     paper_cache.get(pid, {}), pf.any_node_matches) for pid in intermediates):
                     continue
             result.append(path)
@@ -4899,14 +4899,17 @@ class GraphEngine:
             tmp_ids: set[str] = set()
             for p in all_paths:
                 tmp_ids.update(p)
-            for pid in tmp_ids:
-                if pid not in paper_cache:
-                    resp_tmp = await self.client.search(
+            to_fetch_filter = [pid for pid in tmp_ids if pid not in paper_cache]
+            if to_fetch_filter:
+                for batch_start in range(0, len(to_fetch_filter), 200):
+                    batch = to_fetch_filter[batch_start:batch_start + 200]
+                    batch_resp = await self.client.search(
                         index=self.index,
-                        body={"query": {"term": {"arxiv_id": pid}}, "size": 1, "_source": _FIELDS},
+                        body={"query": {"terms": {"arxiv_id": batch}}, "size": len(batch), "_source": _FIELDS},
                     )
-                    if resp_tmp["hits"]["hits"]:
-                        paper_cache[pid] = resp_tmp["hits"]["hits"][0]["_source"]
+                    for hit in batch_resp["hits"]["hits"]:
+                        s = hit["_source"]
+                        paper_cache[s.get("arxiv_id", "")] = s
             all_paths = self._filter_paths(all_paths, paper_cache, gq.path_filter)
 
         # Fetch paper data for all nodes in paths
@@ -4914,14 +4917,17 @@ class GraphEngine:
         for p in all_paths:
             all_ids.update(p)
 
-        for pid in all_ids:
-            if pid not in paper_cache:
-                resp = await self.client.search(
+        to_fetch = [pid for pid in all_ids if pid not in paper_cache]
+        if to_fetch:
+            for batch_start in range(0, len(to_fetch), 200):
+                batch = to_fetch[batch_start:batch_start + 200]
+                batch_resp = await self.client.search(
                     index=self.index,
-                    body={"query": {"term": {"arxiv_id": pid}}, "size": 1, "_source": _FIELDS},
+                    body={"query": {"terms": {"arxiv_id": batch}}, "size": len(batch), "_source": _FIELDS},
                 )
-                if resp["hits"]["hits"]:
-                    paper_cache[pid] = resp["hits"]["hits"][0]["_source"]
+                for hit in batch_resp["hits"]["hits"]:
+                    s = hit["_source"]
+                    paper_cache[s.get("arxiv_id", "")] = s
 
         nodes: list[GraphNode] = []
         edges_out: list[GraphEdge] = []
@@ -5364,8 +5370,30 @@ class GraphEngine:
             eccentricity[v] = max_dist
             reachable_count[v] = len(dist) - 1
 
-        diameter = max(eccentricity.values()) if eccentricity else 0
-        radius = min(e for e in eccentricity.values() if e > 0) if any(e > 0 for e in eccentricity.values()) else 0
+        # Find largest connected component for diameter/radius/center
+        component_of: dict[str, int] = {}
+        comp_id = 0
+        comp_sizes: dict[int, int] = {}
+        for start in node_list:
+            if start in component_of:
+                continue
+            q2 = deque([start])
+            component_of[start] = comp_id
+            size = 0
+            while q2:
+                u = q2.popleft()
+                size += 1
+                for nbr in undirected.get(u, set()):
+                    if nbr not in component_of:
+                        component_of[nbr] = comp_id
+                        q2.append(nbr)
+            comp_sizes[comp_id] = size
+            comp_id += 1
+        largest_comp = max(comp_sizes, key=comp_sizes.get) if comp_sizes else 0
+        lc_nodes = {v for v in node_list if component_of.get(v) == largest_comp}
+
+        diameter = max((eccentricity[v] for v in lc_nodes), default=0)
+        radius = min((eccentricity[v] for v in lc_nodes), default=0)
         center = [v for v in node_list if eccentricity[v] == radius and radius > 0]
 
         # Sort by eccentricity (center nodes first)
@@ -6452,11 +6480,13 @@ class GraphEngine:
                 return result
             result: set[str] = set()
             current_frontier = {src_id}
+            visited = {src_id}
             for hop in range(1, max_h + 1):
                 next_frontier: set[str] = set()
                 for n in current_frontier:
                     next_frontier |= get_neighbors(n, relation)
-                next_frontier -= {src_id}
+                next_frontier -= visited
+                visited |= next_frontier
                 if hop >= min_h:
                     result |= next_frontier
                 current_frontier = next_frontier
