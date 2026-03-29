@@ -6981,9 +6981,10 @@ class GraphEngine:
         # If the last step had a filter, trim the result to the filtered IDs
         if gq.pipeline_steps and gq.pipeline_steps[-1].filter_property and current_paper_ids is not None:
             retained = set(current_paper_ids)
-            final_result.nodes = [n for n in final_result.nodes if n.id in retained]
+            final_result.nodes = [n for n in final_result.nodes if n.type != "paper" or n.id in retained]
+            retained_ids = {n.id for n in final_result.nodes}
             final_result.edges = [e for e in final_result.edges
-                                  if e.source in retained and e.target in retained]
+                                  if e.source in retained_ids and e.target in retained_ids]
             final_result.total = len(final_result.nodes)
 
         # Annotate with pipeline metadata
@@ -7513,9 +7514,10 @@ class GraphEngine:
             GraphQueryType.PIPELINE, GraphQueryType.SUBGRAPH_PROJECTION,
         }
 
-        # Save parent embeddings before sub-execute() calls, because
-        # execute()'s finally block clears the context vars.
+        # Save parent embeddings and ID filter before sub-execute() calls,
+        # because execute()'s finally block clears the context vars.
         saved_embeddings = _ctx_embeddings.get()
+        saved_id_filter = _ctx_active_id_filter.get()
 
         sub_results: list[GraphResponse] = []
         for i, sq_dict in enumerate(gq.set_queries[:2]):
@@ -7531,6 +7533,7 @@ class GraphEngine:
                     nodes=[], edges=[], total=0, took_ms=0,
                     metadata={"error": f"Sub-query {i + 1}: {sub_gq.type.value} cannot be nested inside {mode}"},
                 )
+            _ctx_active_id_filter.set(saved_id_filter)
             try:
                 sub_result = await self.execute(sub_gq, sr, embeddings=saved_embeddings)
             except Exception as e:

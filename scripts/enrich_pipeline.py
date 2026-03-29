@@ -464,7 +464,6 @@ async def compute_hindex(http: httpx.AsyncClient) -> tuple[int, int]:
     finally:
         if scroll_id:
             await http.request("DELETE", f"{ES_URL}/_search/scroll", json={"scroll_id": scroll_id})
-        await http.request("DELETE", f"{ES_URL}/_search/scroll", json={"scroll_id": scroll_id})
 
     # Compute h-index per author
     h_indices: dict[str, int] = {}
