@@ -444,7 +444,7 @@ class GraphQuery(BaseModel):
         description="Paper must be younger than this many months")
     citation_window_years: int = Field(default=2, ge=1, le=10,
         description="Window for computing citation percentile")
-    min_citing_categories: int = Field(default=3, ge=2, le=20,
+    min_citing_categories: int = Field(default=3, ge=2, le=10,
         description="Minimum distinct categories among citing papers")
 
     # Citation traversal

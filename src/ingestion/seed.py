@@ -58,6 +58,8 @@ def parse_api_entry(entry) -> dict | None:
         return None
 
     # Extract arxiv_id: "http://arxiv.org/abs/2401.00001v1" -> "2401.00001"
+    if "/abs/" not in arxiv_id_raw:
+        return None  # skip error/non-paper entries
     arxiv_id = arxiv_id_raw.split("/abs/")[-1]
     # Remove version
     arxiv_id = re.sub(r"v\d+$", "", arxiv_id)

@@ -97,7 +97,7 @@ def compute_enrichment(s2_data: dict) -> dict:
     cat_counts: dict[str, int] = {}
     for c in citing_categories:
         cat_counts[c] = cat_counts.get(c, 0) + 1
-    top_cats = sorted(cat_counts.keys(), key=lambda k: cat_counts[k], reverse=True)[:5]
+    top_cats = sorted(cat_counts.keys(), key=lambda k: cat_counts[k], reverse=True)[:10]
 
     result["citation_stats"] = {
         "total_citations": citation_count,
