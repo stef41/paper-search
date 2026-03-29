@@ -639,8 +639,36 @@ class GraphSearchRequest(BaseModel):
     max_page_count: int | None = Field(default=None, ge=0)
     has_doi: bool | None = None
     has_journal_ref: bool | None = None
-    minimum_should_match: str | None = None
+    minimum_should_match: str | None = Field(
+        default=None,
+        pattern=r"^\d+%?$",
+        description="ES minimum_should_match spec, e.g. '2', '75%'"
+    )
     operator: str = Field(default="or", pattern="^(and|or)$")
+
+    @field_validator("title_regex", "abstract_regex", "author_regex")
+    @classmethod
+    def validate_regex_safety(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        import re
+        dangerous = [
+            r"(.+)+",
+            r"(.*)*",
+            r"([a-zA-Z]+)*",
+            r"(a|a)+",
+        ]
+        for pat in dangerous:
+            if pat in v:
+                raise ValueError(f"Potentially dangerous regex pattern blocked: {pat}")
+        import re as _re
+        if _re.search(r'\([^)]*[+*][^)]*\)[+*]', v):
+            raise ValueError("Potentially dangerous regex pattern (nested quantifiers)")
+        try:
+            re.compile(v)
+        except re.error as exc:
+            raise ValueError(f"Invalid regex: {exc}") from exc
+        return v
 
     def to_search_request(self) -> SearchRequest:
         """Extract the search filter portion as a SearchRequest."""

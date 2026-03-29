@@ -58,7 +58,10 @@ async def get_cached_embedding(
     key = cache_key_for_text(text, level)
     cached = await redis_client.get(key)
     if cached:
-        return json.loads(cached)
+        try:
+            return json.loads(cached)
+        except (json.JSONDecodeError, ValueError):
+            return None
     return None
 
 

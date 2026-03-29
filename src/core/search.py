@@ -179,23 +179,19 @@ class QueryBuilder:
                 }
             })
 
-        # H-index filters
-        if self.req.min_h_index is not None:
+        # H-index filters — combined into a single nested query so both
+        # conditions apply to the SAME author (not different authors).
+        if self.req.min_h_index is not None or self.req.max_h_index is not None:
+            h_range: dict[str, int] = {}
+            if self.req.min_h_index is not None:
+                h_range["gte"] = self.req.min_h_index
+            if self.req.max_h_index is not None:
+                h_range["lte"] = self.req.max_h_index
             must.append({
                 "nested": {
                     "path": "authors",
                     "query": {
-                        "range": {"authors.h_index": {"gte": self.req.min_h_index}}
-                    },
-                }
-            })
-
-        if self.req.max_h_index is not None:
-            must.append({
-                "nested": {
-                    "path": "authors",
-                    "query": {
-                        "range": {"authors.h_index": {"lte": self.req.max_h_index}}
+                        "range": {"authors.h_index": h_range}
                     },
                 }
             })
@@ -466,7 +462,7 @@ class SearchEngine:
         )
 
     async def get_stats(self) -> StatsResponse:
-        count_resp = await self.client.count(index=self.index)
+        count_resp = await self.client.count(index=self.index, request_timeout=10)
         total = count_resp["count"]
 
         aggs_body = {
@@ -480,7 +476,10 @@ class SearchEngine:
                 "avg_citations": {"avg": {"field": "citation_stats.total_citations"}},
             },
         }
-        aggs_resp = await self.client.search(index=self.index, body=aggs_body)
+        aggs_resp = await self.client.search(
+            index=self.index, body=aggs_body,
+            request_timeout=10, timeout="5s",
+        )
         aggs = aggs_resp["aggregations"]
 
         cats = {b["key"]: b["doc_count"] for b in aggs["categories"]["buckets"]}
@@ -501,6 +500,7 @@ class SearchEngine:
         resp = await self.client.search(
             index=self.index,
             body={"query": {"term": {"arxiv_id": arxiv_id}}, "size": 1},
+            request_timeout=5,
         )
         hits = resp["hits"]["hits"]
         if hits:
