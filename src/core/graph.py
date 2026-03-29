@@ -169,8 +169,8 @@ ARXIV_FIELDS = FieldMapping()
 _ctx_active_id_filter: contextvars.ContextVar[list[str] | None] = contextvars.ContextVar(
     "_ctx_active_id_filter", default=None
 )
-_ctx_embeddings: contextvars.ContextVar[list[tuple[SemanticQuery, list[float]]]] = contextvars.ContextVar(
-    "_ctx_embeddings", default=[]
+_ctx_embeddings: contextvars.ContextVar[list[tuple[SemanticQuery, list[float]]] | None] = contextvars.ContextVar(
+    "_ctx_embeddings", default=None
 )
 _ctx_first_boost_emb: contextvars.ContextVar[list[float] | None] = contextvars.ContextVar(
     "_ctx_first_boost_emb", default=None
@@ -7045,6 +7045,12 @@ class GraphEngine:
             retained_ids = {n.id for n in final_result.nodes}
             final_result.edges = [e for e in final_result.edges
                                   if e.source in retained_ids and e.target in retained_ids]
+            # Remove non-paper nodes that lost all their edges (orphans)
+            connected = set()
+            for e in final_result.edges:
+                connected.add(e.source)
+                connected.add(e.target)
+            final_result.nodes = [n for n in final_result.nodes if n.type == "paper" or n.id in connected]
             final_result.total = len(final_result.nodes)
 
         # Annotate with pipeline metadata

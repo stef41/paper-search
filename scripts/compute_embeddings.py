@@ -76,40 +76,55 @@ def main():
 
         try:
             while hits:
-            if args.max_papers > 0 and total >= args.max_papers:
-                break
+                if args.max_papers > 0 and total >= args.max_papers:
+                    break
 
-            # Extract texts
-            doc_ids = []
-            titles = []
-            abstracts = []
-            for h in hits:
-                src = h["_source"]
-                doc_ids.append(h["_id"])
-                titles.append(src.get("title", "") or "")
-                abstracts.append(src.get("abstract", "") or "")
+                # Extract texts
+                doc_ids = []
+                titles = []
+                abstracts = []
+                for h in hits:
+                    src = h["_source"]
+                    doc_ids.append(h["_id"])
+                    titles.append(src.get("title", "") or "")
+                    abstracts.append(src.get("abstract", "") or "")
 
-            # Encode in batches
-            title_embs = model.encode(
-                titles, batch_size=args.batch_size,
-                normalize_embeddings=True, show_progress_bar=False,
-            )
-            abstract_embs = model.encode(
-                abstracts, batch_size=args.batch_size,
-                normalize_embeddings=True, show_progress_bar=False,
-            )
+                # Encode in batches
+                title_embs = model.encode(
+                    titles, batch_size=args.batch_size,
+                    normalize_embeddings=True, show_progress_bar=False,
+                )
+                abstract_embs = model.encode(
+                    abstracts, batch_size=args.batch_size,
+                    normalize_embeddings=True, show_progress_bar=False,
+                )
 
-            # Bulk update to ES
-            bulk_lines: list[str] = []
-            for i, doc_id in enumerate(doc_ids):
-                bulk_lines.append(json.dumps({"update": {"_id": doc_id}}))
-                doc = {
-                    "title_embedding": title_embs[i].tolist(),
-                    "abstract_embedding": abstract_embs[i].tolist(),
-                }
-                bulk_lines.append(json.dumps({"doc": doc}))
+                # Bulk update to ES
+                bulk_lines: list[str] = []
+                for i, doc_id in enumerate(doc_ids):
+                    bulk_lines.append(json.dumps({"update": {"_id": doc_id}}))
+                    doc = {
+                        "title_embedding": title_embs[i].tolist(),
+                        "abstract_embedding": abstract_embs[i].tolist(),
+                    }
+                    bulk_lines.append(json.dumps({"doc": doc}))
 
-                if len(bulk_lines) >= BULK_SIZE * 2:
+                    if len(bulk_lines) >= BULK_SIZE * 2:
+                        br = http.post(
+                            f"{ES_URL}/{INDEX}/_bulk",
+                            content=("\n".join(bulk_lines) + "\n").encode(),
+                            headers={"Content-Type": "application/x-ndjson"},
+                        )
+                        if br.status_code != 200:
+                            print(f"  WARNING: ES bulk returned {br.status_code}")
+                        else:
+                            br_json = br.json()
+                            if br_json.get("errors"):
+                                errs = sum(1 for it in br_json.get("items", []) if "error" in it.get("update", {}))
+                                print(f"  WARNING: {errs} bulk update errors")
+                        bulk_lines = []
+
+                if bulk_lines:
                     br = http.post(
                         f"{ES_URL}/{INDEX}/_bulk",
                         content=("\n".join(bulk_lines) + "\n").encode(),
@@ -122,41 +137,26 @@ def main():
                         if br_json.get("errors"):
                             errs = sum(1 for it in br_json.get("items", []) if "error" in it.get("update", {}))
                             print(f"  WARNING: {errs} bulk update errors")
-                    bulk_lines = []
 
-            if bulk_lines:
-                br = http.post(
-                    f"{ES_URL}/{INDEX}/_bulk",
-                    content=("\n".join(bulk_lines) + "\n").encode(),
-                    headers={"Content-Type": "application/x-ndjson"},
-                )
-                if br.status_code != 200:
-                    print(f"  WARNING: ES bulk returned {br.status_code}")
-                else:
-                    br_json = br.json()
-                    if br_json.get("errors"):
-                        errs = sum(1 for it in br_json.get("items", []) if "error" in it.get("update", {}))
-                        print(f"  WARNING: {errs} bulk update errors")
+                total += len(hits)
+                elapsed = time.time() - t0
+                rate = total / elapsed if elapsed > 0 else 0
+                eta = (target - total) / rate if rate > 0 else 0
 
-            total += len(hits)
-            elapsed = time.time() - t0
-            rate = total / elapsed if elapsed > 0 else 0
-            eta = (target - total) / rate if rate > 0 else 0
+                if total % 5000 < SCROLL_SIZE:
+                    print(f"  [{total:>10,}/{target:,}] {rate:.0f} papers/s, "
+                          f"elapsed {elapsed:.0f}s, ETA {eta:.0f}s")
 
-            if total % 5000 < SCROLL_SIZE:
-                print(f"  [{total:>10,}/{target:,}] {rate:.0f} papers/s, "
-                      f"elapsed {elapsed:.0f}s, ETA {eta:.0f}s")
-
-            # Next scroll page
-            r = http.post(f"{ES_URL}/_search/scroll", json={
-                "scroll": "10m", "scroll_id": scroll_id,
-            })
-            data = r.json()
-            if r.status_code != 200 or "hits" not in data:
-                print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
-                break
-            scroll_id = data.get("_scroll_id")
-            hits = data.get("hits", {}).get("hits", [])
+                # Next scroll page
+                r = http.post(f"{ES_URL}/_search/scroll", json={
+                    "scroll": "10m", "scroll_id": scroll_id,
+                })
+                data = r.json()
+                if r.status_code != 200 or "hits" not in data:
+                    print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
+                    break
+                scroll_id = data.get("_scroll_id")
+                hits = data.get("hits", {}).get("hits", [])
 
         finally:
             # Cleanup
