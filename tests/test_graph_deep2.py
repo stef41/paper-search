@@ -404,7 +404,7 @@ async def test_bc_with_date_filter(c: httpx.AsyncClient):
     name = "bc:with_date_filter"
     data = await post_graph(c, {
         "graph": {"type": "betweenness_centrality", "limit": 10},
-        "query": "language model", "date_range": {"gte": "2024-01-01"},
+        "query": "language model", "submitted_date": {"gte": "2024-01-01T00:00:00"},
     }, name)
     if not data or not validate_graph_integrity(data, name):
         return
@@ -582,7 +582,7 @@ async def test_cc_with_date_filter(c: httpx.AsyncClient):
     name = "cc:with_date_filter"
     data = await post_graph(c, {
         "graph": {"type": "closeness_centrality", "limit": 10},
-        "query": "multimodal learning", "date_range": {"gte": "2024-01-01"},
+        "query": "multimodal learning", "submitted_date": {"gte": "2024-01-01T00:00:00"},
     }, name)
     if not data or not validate_graph_integrity(data, name):
         return
@@ -781,7 +781,7 @@ async def test_scc_with_date_filter(c: httpx.AsyncClient):
     name = "scc:with_date_filter"
     data = await post_graph(c, {
         "graph": {"type": "strongly_connected_components", "limit": 10},
-        "query": "generative model", "date_range": {"gte": "2024-01-01"},
+        "query": "generative model", "submitted_date": {"gte": "2024-01-01T00:00:00"},
     }, name)
     if not data or not validate_graph_integrity(data, name):
         return
@@ -991,7 +991,7 @@ async def test_topo_with_date_filter(c: httpx.AsyncClient):
     name = "topo:with_date_filter"
     data = await post_graph(c, {
         "graph": {"type": "topological_sort", "limit": 15},
-        "query": "protein structure prediction", "date_range": {"gte": "2024-01-01"},
+        "query": "protein structure prediction", "submitted_date": {"gte": "2024-01-01T00:00:00"},
     }, name)
     if not data or not validate_graph_integrity(data, name):
         return
@@ -1216,7 +1216,7 @@ async def test_lp_with_date_filter(c: httpx.AsyncClient):
     name = "lp:with_date_filter"
     data = await post_graph(c, {
         "graph": {"type": "link_prediction", "prediction_method": "preferential_attachment", "limit": 10},
-        "query": "large language model", "date_range": {"gte": "2024-01-01"},
+        "query": "large language model", "submitted_date": {"gte": "2024-01-01T00:00:00"},
     }, name)
     if not data or not validate_graph_integrity(data, name):
         return

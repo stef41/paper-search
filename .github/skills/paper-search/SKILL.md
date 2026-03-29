@@ -400,7 +400,7 @@ POST `/graph` with JSON body. The `graph` field is required; all other fields ar
 
     // ── Common parameters ──
     "seed_author": "Author Name",       // for coauthor_network, author_influence, author_topic_evolution
-    "depth": 1,                          // 1 or 2 hops (coauthor_network)
+    "depth": 1,                          // coauthor_network depth (1-5)
     "min_categories": 3,                 // for category_diversity, interdisciplinary, author_bridge
     "source_categories": ["cs.AI"],      // for cross_category_flow, author_bridge, domain_collaboration
     "target_categories": ["q-bio.NC"],   // for cross_category_flow, author_bridge, domain_collaboration
@@ -427,16 +427,16 @@ POST `/graph` with JSON body. The `graph` field is required; all other fields ar
     "max_hops": 3,                       // max traversal depth (multihop_citation, shortest_citation_path, weighted_shortest_path)
     "target_arxiv_id": "2405.04233",    // destination for shortest-path algorithms
     "damping_factor": 0.85,              // PageRank damping (0.1-0.99)
-    "iterations": 20,                    // PageRank / community detection iterations (1-50)
+    "iterations": 20,                    // PageRank / community detection iterations (1-500)
     "pattern": "mutual",                 // citation_patterns: mutual|star|chain|triangle
     "weight_field": "citations",        // weighted_shortest_path: "citations" or "uniform"
     "prediction_method": "common_neighbors", // link_prediction: common_neighbors|jaccard|adamic_adar|preferential_attachment
-    "influence_seeds": 5,                // influence_maximization: number of seed papers to select (1-20)
+    "influence_seeds": 5,                // influence_maximization: number of seed papers to select (1-200)
     "degree_mode": "total",             // degree_centrality: "in" | "out" | "total"
 
     // ── Graph-DB algorithms (types 35-49) ──
-    "k_paths": 3,                        // k_shortest_paths: number of paths to find (1-10)
-    "walk_length": 10,                   // random_walk: steps per walk (1-50)
+    "k_paths": 3,                        // k_shortest_paths: number of paths to find (1-20)
+    "walk_length": 10,                   // random_walk: steps per walk (1-100)
     "num_walks": 100,                    // random_walk: number of walks (1-1000)
     "teleport_prob": 0.15,              // random_walk: restart probability (0.0-1.0)
     "similarity_method": "jaccard",      // node_similarity: jaccard|overlap|cosine

@@ -142,9 +142,13 @@ async def test_multihop_edge_source_target_consistency(c: httpx.AsyncClient):
     # Edge endpoints should be in node set or point to papers we haven't fetched
     # But the source should always be in nodes (since we walk from known papers)
     bad_sources = [e for e in data["edges"] if e["source"] not in node_ids]
+    if bad_sources:
+        fail(name, data["took_ms"],
+             f"{len(bad_sources)} edges have source not in node set")
+        return
     # Target might not be in nodes (fetched at next hop but capped)
     ok(name, data["took_ms"],
-       f"{len(data['edges'])} edges, {len(bad_sources)} orphan sources")
+       f"{len(data['edges'])} edges, all sources in node set")
 
 
 async def test_multihop_direction_references(c: httpx.AsyncClient):
@@ -1092,16 +1096,16 @@ async def test_validation_invalid_pattern(c: httpx.AsyncClient):
 
 
 async def test_validation_max_hops_too_high(c: httpx.AsyncClient):
-    """max_hops > 10 should be rejected."""
+    """max_hops > 50 should be rejected."""
     name = "validation:max_hops_too_high"
     start = time.monotonic()
     resp = await c.post(f"{BASE}/graph", json={
-        "graph": {"type": "multihop_citation", "max_hops": 15,
+        "graph": {"type": "multihop_citation", "max_hops": 55,
                   "seed_arxiv_id": CONNECTED_PAPER},
     }, headers=HEADERS, timeout=TIMEOUT)
     elapsed = int((time.monotonic() - start) * 1000)
     if resp.status_code == 422:
-        ok(name, elapsed, "422 for max_hops=15")
+        ok(name, elapsed, "422 for max_hops=55")
     else:
         fail(name, elapsed, f"Expected 422, got {resp.status_code}")
 
@@ -1121,15 +1125,15 @@ async def test_validation_damping_out_of_range(c: httpx.AsyncClient):
 
 
 async def test_validation_iterations_out_of_range(c: httpx.AsyncClient):
-    """iterations > 100 should be rejected."""
+    """iterations > 500 should be rejected."""
     name = "validation:iterations_range"
     start = time.monotonic()
     resp = await c.post(f"{BASE}/graph", json={
-        "graph": {"type": "pagerank", "iterations": 150},
+        "graph": {"type": "pagerank", "iterations": 550},
     }, headers=HEADERS, timeout=TIMEOUT)
     elapsed = int((time.monotonic() - start) * 1000)
     if resp.status_code == 422:
-        ok(name, elapsed, "422 for iterations=100")
+        ok(name, elapsed, "422 for iterations=550")
     else:
         fail(name, elapsed, f"Expected 422, got {resp.status_code}")
 

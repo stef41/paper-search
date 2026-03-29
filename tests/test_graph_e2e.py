@@ -414,7 +414,7 @@ async def test_citation_traversal_by_author(c: httpx.AsyncClient):
     if resp.status_code != 200:
         results.append(TestResult(name, False, 0, f"Search failed: {resp.status_code}"))
         return
-    papers = resp.json().get("results", [])
+    papers = resp.json().get("hits", [])
     if not papers:
         results.append(TestResult(name, True, 0, "No papers with references found (skip)"))
         return
