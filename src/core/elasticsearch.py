@@ -153,6 +153,17 @@ def get_index_mapping(embedding_dim: int) -> dict:
                     "index": True,
                     "similarity": "cosine",
                 },
+                "paragraph_embeddings": {
+                    "type": "nested",
+                    "properties": {
+                        "vector": {
+                            "type": "dense_vector",
+                            "dims": embedding_dim,
+                            "index": True,
+                            "similarity": "cosine",
+                        },
+                    },
+                },
                 # Citation stats
                 "citation_stats": {
                     "type": "object",
