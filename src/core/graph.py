@@ -6316,7 +6316,7 @@ class GraphEngine:
 
         _FIELDS = ["arxiv_id", "title", "categories", "primary_category",
                     "authors", "submitted_date", "citation_stats",
-                    "reference_ids", "cited_by_ids", "has_github"]
+                    "reference_ids", "cited_by_ids", "has_github", "page_count"]
 
         # ── Step 1: Find candidates for the anchor node (first pattern node) ──
         anchor = p_nodes[0]
