@@ -71,7 +71,7 @@ def compute_enrichment(s2_data: dict) -> dict:
 
     # Author h-index data
     authors = s2_data.get("authors", [])
-    if authors:
+    if authors and isinstance(authors[0], dict):
         result["first_author_h_index"] = authors[0].get("hIndex")
 
     # Citation stats

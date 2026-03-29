@@ -74,7 +74,8 @@ def main():
         scroll_id = data.get("_scroll_id")
         hits = data["hits"]["hits"]
 
-        while hits:
+        try:
+            while hits:
             if args.max_papers > 0 and total >= args.max_papers:
                 break
 
@@ -157,10 +158,11 @@ def main():
             scroll_id = data.get("_scroll_id")
             hits = data.get("hits", {}).get("hits", [])
 
-        # Cleanup
-        if scroll_id:
-            http.request("DELETE", f"{ES_URL}/_search/scroll",
-                         json={"scroll_id": scroll_id})
+        finally:
+            # Cleanup
+            if scroll_id:
+                http.request("DELETE", f"{ES_URL}/_search/scroll",
+                             json={"scroll_id": scroll_id})
 
         http.post(f"{ES_URL}/{INDEX}/_refresh")
 

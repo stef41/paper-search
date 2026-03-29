@@ -152,7 +152,7 @@ async def main():
                 update = {"doc": {
                     "citation_stats": {"total_citations": cites, "top_citing_categories": top_citing, "median_h_index_citing_authors": median_h},
                     "references_stats": {"total_references": len(refs)},
-                    "first_author_h_index": authors[0].get("hIndex") if authors else None,
+                    "first_author_h_index": authors[0].get("hIndex") if authors and isinstance(authors[0], dict) else None,
                     "reference_ids": ref_ids,
                     "cited_by_ids": cited_by_ids,
                     "enrichment_source": "semantic_scholar",

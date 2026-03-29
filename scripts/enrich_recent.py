@@ -70,7 +70,7 @@ def compute_enrichment(s2: dict) -> dict:
         "citation_stats.top_citing_categories": top_citing,
         "citation_stats.median_h_index_citing_authors": statistics.median(citing_h_indices) if citing_h_indices else None,
         "references_stats.total_references": len(refs),
-        "first_author_h_index": authors[0].get("hIndex") if authors else None,
+        "first_author_h_index": authors[0].get("hIndex") if authors and isinstance(authors[0], dict) else None,
     }
 
 

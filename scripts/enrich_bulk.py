@@ -153,7 +153,7 @@ async def main():
                         "references_stats": {
                             "total_references": len(refs),
                         },
-                        "first_author_h_index": authors[0].get("hIndex") if authors else None,
+                        "first_author_h_index": authors[0].get("hIndex") if authors and isinstance(authors[0], dict) else None,
                         "reference_ids": ref_arxiv_ids,
                         "cited_by_ids": cited_by_arxiv_ids,
                         "enrichment_source": "semantic_scholar",
