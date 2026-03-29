@@ -34,6 +34,20 @@ REQ_DELAY = 0.105  # ~9.5 req/s
 CACHE_FILE = "data/openalex_id_cache.json"  # local cache: OpenAlex ID → arxiv ID
 
 
+async def _checked_bulk(http: httpx.AsyncClient, bulk_body: list[str]) -> None:
+    """Post a bulk request and warn on per-item errors."""
+    resp = await http.post(
+        f"{ES_URL}/{INDEX}/_bulk",
+        content=("\n".join(bulk_body) + "\n").encode(),
+        headers={"Content-Type": "application/x-ndjson"},
+    )
+    result = resp.json()
+    if result.get("errors"):
+        failed = sum(1 for item in result.get("items", [])
+                     if "error" in (item.get("update") or item.get("index") or {}))
+        print(f"    WARNING: {failed} bulk operations failed")
+
+
 def arxiv_to_doi(arxiv_id: str) -> str:
     return f"10.48550/arxiv.{arxiv_id}"
 
@@ -276,11 +290,7 @@ async def process_batch(
         total_refs += len(ref_arxiv_ids)
 
     if bulk_body:
-        await http.post(
-            f"{ES_URL}/{INDEX}/_bulk",
-            content=("\n".join(bulk_body) + "\n").encode(),
-            headers={"Content-Type": "application/x-ndjson"},
-        )
+        await _checked_bulk(http, bulk_body)
 
     return found, len(papers) - found, total_refs
 

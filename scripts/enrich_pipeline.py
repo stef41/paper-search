@@ -38,6 +38,25 @@ INDEX = "arxiv_papers"
 OPENALEX_API = "https://api.openalex.org"
 BATCH_SIZE = 50  # papers per OpenAlex request
 REQ_DELAY = 0.105  # ~9.5 req/s to stay under 10 req/s
+
+_bulk_errors_total = 0
+
+
+async def _checked_bulk(http: httpx.AsyncClient, bulk_body: list[str], **kwargs) -> None:
+    """Post a bulk request and warn on per-item errors."""
+    global _bulk_errors_total
+    resp = await http.post(
+        f"{ES_URL}/{INDEX}/_bulk",
+        content=("\n".join(bulk_body) + "\n").encode(),
+        headers={"Content-Type": "application/x-ndjson"},
+        **kwargs,
+    )
+    result = resp.json()
+    if result.get("errors"):
+        failed = sum(1 for item in result.get("items", [])
+                     if "error" in (item.get("update") or item.get("index") or {}))
+        _bulk_errors_total += failed
+        print(f"    WARNING: {failed} bulk operations failed")
 SCROLL_SIZE = 5000
 BULK_SIZE = 5000
 CACHE_FILE = "data/openalex_id_cache.json"
@@ -214,11 +233,7 @@ async def openalex_fetch_refs_batch(
         total_refs += len(ref_arxiv_ids)
 
     if bulk_body:
-        await http.post(
-            f"{ES_URL}/{INDEX}/_bulk",
-            content=("\n".join(bulk_body) + "\n").encode(),
-            headers={"Content-Type": "application/x-ndjson"},
-        )
+        await _checked_bulk(http, bulk_body)
 
     return found, len(papers) - found, total_refs
 
@@ -278,6 +293,7 @@ async def run_openalex(
     processed = 0
 
     while processed < limit:
+        query["size"] = min(limit - processed, 10000)
         r = await http.post(f"{ES_URL}/{INDEX}/_search", json=query)
         hits = r.json()["hits"]["hits"]
         if not hits:
@@ -286,6 +302,8 @@ async def run_openalex(
         papers = [{"arxiv_id": h["_source"]["arxiv_id"], "_id": h["_id"]} for h in hits]
 
         for i in range(0, len(papers), BATCH_SIZE):
+            if processed >= limit:
+                break
             batch = papers[i:i + BATCH_SIZE]
             found, not_found, refs = await openalex_fetch_refs_batch(http, batch, email)
             total_found += found
@@ -300,7 +318,7 @@ async def run_openalex(
 
         await http.post(f"{ES_URL}/{INDEX}/_refresh")
 
-        if len(hits) < min(limit - processed, 10000):
+        if len(hits) < query["size"]:
             break
 
     return total_found, total_not_found, total_refs
@@ -373,15 +391,11 @@ async def compute_citations(http: httpx.AsyncClient) -> tuple[int, int]:
         updated += 1
 
         if len(bulk_body) >= BULK_SIZE * 2:
-            await http.post(f"{ES_URL}/{INDEX}/_bulk",
-                            content=("\n".join(bulk_body) + "\n").encode(),
-                            headers={"Content-Type": "application/x-ndjson"}, timeout=120)
+            await _checked_bulk(http, bulk_body, timeout=120)
             bulk_body = []
 
     if bulk_body:
-        await http.post(f"{ES_URL}/{INDEX}/_bulk",
-                        content=("\n".join(bulk_body) + "\n").encode(),
-                        headers={"Content-Type": "application/x-ndjson"}, timeout=120)
+        await _checked_bulk(http, bulk_body, timeout=120)
 
     return updated, external
 
@@ -484,9 +498,7 @@ async def compute_hindex(http: httpx.AsyncClient) -> tuple[int, int]:
             updated += 1
 
             if len(bulk_body) >= BULK_SIZE * 2:
-                await http.post(f"{ES_URL}/{INDEX}/_bulk",
-                                content=("\n".join(bulk_body) + "\n").encode(),
-                                headers={"Content-Type": "application/x-ndjson"}, timeout=120)
+                await _checked_bulk(http, bulk_body, timeout=120)
                 bulk_body = []
 
         r = await http.post(f"{ES_URL}/_search/scroll", json={"scroll": "5m", "scroll_id": scroll_id})
@@ -498,9 +510,7 @@ async def compute_hindex(http: httpx.AsyncClient) -> tuple[int, int]:
         await http.request("DELETE", f"{ES_URL}/_search/scroll", json={"scroll_id": scroll_id})
 
     if bulk_body:
-        await http.post(f"{ES_URL}/{INDEX}/_bulk",
-                        content=("\n".join(bulk_body) + "\n").encode(),
-                        headers={"Content-Type": "application/x-ndjson"}, timeout=120)
+        await _checked_bulk(http, bulk_body, timeout=120)
 
     return len(h_indices), updated
 
