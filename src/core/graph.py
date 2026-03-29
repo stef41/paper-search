@@ -106,12 +106,12 @@ class FieldMapping:
 
     def extract_authors(self, src: dict, max_n: int = 50) -> list[str]:
         authors = src.get(self.node_authors) or []
-        return [a.get(self.node_author_name, "") if isinstance(a, dict) else str(a)
+        return [a.get(self.node_author_name, "") if isinstance(a, dict) else (str(a) if a is not None else "")
                 for a in authors[:max_n]]
 
     def extract_citations(self, src: dict) -> int:
         cs = src.get(self.node_metrics) or {}
-        return cs.get(self.node_metrics_total, 0) if isinstance(cs, dict) else 0
+        return (cs.get(self.node_metrics_total) or 0) if isinstance(cs, dict) else 0
 
     def extract_outgoing(self, src: dict) -> list[str]:
         return src.get(self.outgoing_edges, []) or []
@@ -359,12 +359,12 @@ class GraphEngine:
                 return False
         if "min_citations" in filters:
             cs = src.get("citation_stats") or {}
-            tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
+            tc = (cs.get("total_citations") or 0) if isinstance(cs, dict) else 0
             if tc < _safe_int(filters["min_citations"]):
                 return False
         if "max_citations" in filters:
             cs = src.get("citation_stats") or {}
-            tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
+            tc = (cs.get("total_citations") or 0) if isinstance(cs, dict) else 0
             if tc > _safe_int(filters["max_citations"]):
                 return False
         if "date_from" in filters:
@@ -1170,7 +1170,7 @@ class GraphEngine:
             scored.append((src, len(citing_cats), citing_cats))
 
         # Sort by number of distinct citing categories descending
-        scored.sort(key=lambda x: (-x[1], -((x[0].get("citation_stats") or {}).get("total_citations", 0))))
+        scored.sort(key=lambda x: (-x[1], -((x[0].get("citation_stats") or {}).get("total_citations") or 0)))
         scored = scored[:limit]
 
         nodes: list[GraphNode] = []
@@ -1178,7 +1178,7 @@ class GraphEngine:
         cat_set: set[str] = set()
 
         for src, citing_cat_count, citing_cats in scored:
-            cites = (src.get("citation_stats") or {}).get("total_citations", 0)
+            cites = (src.get("citation_stats") or {}).get("total_citations") or 0
             own_cats = src.get("categories") or []
             cat_set.update(own_cats)
             cat_set.update(citing_cats)
@@ -1351,7 +1351,7 @@ class GraphEngine:
             author_counts: dict[str, int] = {}
             for tp in traversed:
                 for a in tp.get("authors") or []:
-                    name = a.get("name", "") if isinstance(a, dict) else str(a)
+                    name = a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")
                     if name:
                         author_counts[name] = author_counts.get(name, 0) + 1
 
@@ -2226,13 +2226,14 @@ class GraphEngine:
             next_ids: set[str] = set()
             for aid, src in current_frontier.items():
                 for linked_id in (src.get(field, []) or []):
+                    # Add edge for all links (including back-edges to already-seen nodes)
+                    if direction == "references":
+                        edges.append(GraphEdge(source=aid, target=linked_id, relation="cites"))
+                    else:
+                        edges.append(GraphEdge(source=linked_id, target=aid, relation="cites"))
+                    # Only traverse forward to unseen nodes
                     if linked_id not in seen:
                         next_ids.add(linked_id)
-                        # Add edge
-                        if direction == "references":
-                            edges.append(GraphEdge(source=aid, target=linked_id, relation="cites"))
-                        else:
-                            edges.append(GraphEdge(source=linked_id, target=aid, relation="cites"))
 
             if not next_ids:
                 break
@@ -2331,38 +2332,55 @@ class GraphEngine:
             if len(forward_frontier) <= len(backward_frontier):
                 papers = await _fetch_papers(list(forward_frontier))
                 next_forward: set[str] = set()
+                candidates: list[str] = []
                 for fid in forward_frontier:
                     src = papers.get(fid, paper_cache.get(fid, {}))
                     # Follow both directions for connectivity
                     neighbors = set(src.get("reference_ids", []) or []) | set(src.get("cited_by_ids", []) or [])
                     for nid in neighbors:
                         if nid in backward_parents:
-                            if meeting_point is None:
-                                meeting_point = nid
+                            candidates.append(nid)
                             if nid not in forward_parents:
                                 forward_parents[nid] = fid
                         elif nid not in forward_parents:
                             forward_parents[nid] = fid
                             next_forward.add(nid)
-                if meeting_point:
+                if candidates:
+                    # Pick meeting point with shortest backward chain
+                    def _bwd_depth(mp: str) -> int:
+                        d = 0
+                        c: str | None = backward_parents.get(mp)
+                        while c is not None:
+                            d += 1
+                            c = backward_parents.get(c)
+                        return d
+                    meeting_point = min(candidates, key=_bwd_depth)
                     break
                 forward_frontier = next_forward
             else:
                 papers = await _fetch_papers(list(backward_frontier))
                 next_backward: set[str] = set()
+                candidates_b: list[str] = []
                 for bid in backward_frontier:
                     src = papers.get(bid, paper_cache.get(bid, {}))
                     neighbors = set(src.get("reference_ids", []) or []) | set(src.get("cited_by_ids", []) or [])
                     for nid in neighbors:
                         if nid in forward_parents:
-                            if meeting_point is None:
-                                meeting_point = nid
+                            candidates_b.append(nid)
                             if nid not in backward_parents:
                                 backward_parents[nid] = bid
                         elif nid not in backward_parents:
                             backward_parents[nid] = bid
                             next_backward.add(nid)
-                if meeting_point:
+                if candidates_b:
+                    def _fwd_depth(mp: str) -> int:
+                        d = 0
+                        c: str | None = forward_parents.get(mp)
+                        while c is not None:
+                            d += 1
+                            c = forward_parents.get(c)
+                        return d
+                    meeting_point = min(candidates_b, key=_fwd_depth)
                     break
                 backward_frontier = next_backward
 
@@ -2552,7 +2570,7 @@ class GraphEngine:
         author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
             for a in (src.get("authors") or [])[:50]:
-                name = a.get("name", "") if isinstance(a, dict) else str(a)
+                name = a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")
                 if name:
                     author_papers[name].append(aid)
         for name, papers in author_papers.items():
@@ -2716,7 +2734,7 @@ class GraphEngine:
             for a in node_ids:
                 for b in cites.get(a, set()):
                     for c in cites.get(b, set()):
-                        if a in cites.get(c, set()) and a != c:
+                        if a in cites.get(c, set()) and len({a, b, c}) == 3:
                             tri = tuple(sorted([a, b, c]))
                             tri_key = "|".join(tri)
                             if tri_key in seen_tris:
@@ -3156,7 +3174,7 @@ class GraphEngine:
         def _edge_cost(paper: dict) -> float:
             if weight_field == "uniform":
                 return 1.0
-            cit = (paper.get("citation_stats") or {}).get("total_citations", 0)
+            cit = (paper.get("citation_stats") or {}).get("total_citations") or 0
             return 1.0 / (1.0 + cit)
 
         # Dijkstra
@@ -3855,7 +3873,7 @@ class GraphEngine:
         author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
             for a in (src.get("authors") or [])[:50]:
-                name = a.get("name", "") if isinstance(a, dict) else str(a)
+                name = a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")
                 if name:
                     author_papers[name].append(aid)
         for name, papers in author_papers.items():
@@ -5463,7 +5481,7 @@ class GraphEngine:
         author_papers: dict[str, list[str]] = defaultdict(list)
         for aid, src in paper_data.items():
             for a in (src.get("authors") or [])[:50]:
-                name = a.get("name", "") if isinstance(a, dict) else str(a)
+                name = a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")
                 if name:
                     author_papers[name].append(aid)
         for name, papers in author_papers.items():
@@ -6151,7 +6169,7 @@ class GraphEngine:
             # Co-authorship projection
             paper_authors: dict[str, list[str]] = {}
             for aid, src in paper_data.items():
-                paper_authors[aid] = [a.get("name", "") if isinstance(a, dict) else str(a)
+                paper_authors[aid] = [a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")
                                        for a in (src.get("authors") or [])[:15] if a]
 
             author_coauth: Counter[tuple[str, str]] = Counter()
@@ -6422,7 +6440,7 @@ class GraphEngine:
             for aid, src in paper_cache.items():
                 names = []
                 for a in (src.get("authors") or [])[:50]:
-                    name = a.get("name", "") if isinstance(a, dict) else str(a)
+                    name = a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")
                     if name:
                         names.append(name)
                         _author_papers[name].append(aid)
@@ -6508,12 +6526,12 @@ class GraphEngine:
                     return False
             if "min_citations" in f:
                 cs = src.get("citation_stats") or {}
-                tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
+                tc = (cs.get("total_citations") or 0) if isinstance(cs, dict) else 0
                 if tc < _safe_int(f["min_citations"]):
                     return False
             if "max_citations" in f:
                 cs = src.get("citation_stats") or {}
-                tc = cs.get("total_citations", 0) if isinstance(cs, dict) else 0
+                tc = (cs.get("total_citations") or 0) if isinstance(cs, dict) else 0
                 if tc > _safe_int(f["max_citations"]):
                     return False
             if "has_github" in f and src.get("has_github") != f["has_github"]:
@@ -6558,7 +6576,7 @@ class GraphEngine:
                 return None
             if prop == "citations":
                 cs = src.get("citation_stats") or {}
-                return cs.get("total_citations", 0) if isinstance(cs, dict) else 0
+                return (cs.get("total_citations") or 0) if isinstance(cs, dict) else 0
             elif prop in ("date", "submitted_date"):
                 return src.get("submitted_date", "")
             elif prop == "primary_category":
@@ -6572,7 +6590,7 @@ class GraphEngine:
             elif prop == "title":
                 return src.get("title", "")
             elif prop == "authors":
-                return [a.get("name", "") if isinstance(a, dict) else str(a)
+                return [a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")
                         for a in src.get("authors") or []]
             # Handle dotted nested properties like "citation_stats.total_citations"
             if "." in prop:
