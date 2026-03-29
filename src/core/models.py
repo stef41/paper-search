@@ -432,8 +432,8 @@ class SubgraphFilter(BaseModel):
     min_citations: int | None = Field(default=None, ge=0)
     max_citations: int | None = Field(default=None, ge=0)
     has_github: bool | None = None
-    authors: list[str] | None = Field(default=None, description="Only papers by these authors")
-    seed_arxiv_ids: list[str] | None = Field(default=None, description="Start from these specific papers")
+    authors: list[str] | None = Field(default=None, max_length=100, description="Only papers by these authors")
+    seed_arxiv_ids: list[str] | None = Field(default=None, max_length=10000, description="Start from these specific papers")
     direction: str = Field(default="both", pattern="^(references|cited_by|both)$",
         description="Which citation edges to include")
     max_nodes: int = Field(default=500, ge=10, le=10000, description="Max nodes in the projected subgraph")
@@ -455,9 +455,9 @@ class GraphQuery(BaseModel):
         description="Minimum number of distinct categories")
 
     # Cross-category flow / author bridge directional filters
-    source_categories: list[str] | None = Field(default=None,
+    source_categories: list[str] | None = Field(default=None, max_length=50,
         description="Source categories for flow / bridge queries")
-    target_categories: list[str] | None = Field(default=None,
+    target_categories: list[str] | None = Field(default=None, max_length=50,
         description="Target categories for flow / bridge queries")
 
     # Rising interdisciplinary
@@ -479,7 +479,7 @@ class GraphQuery(BaseModel):
         description="How to aggregate the traversed papers")
 
     # Multi-paper seed (for bibliographic_coupling, cocitation, paper_citation_network)
-    seed_arxiv_ids: list[str] | None = Field(default=None,
+    seed_arxiv_ids: list[str] | None = Field(default=None, max_length=10000,
         description="Multiple paper IDs as seeds (alternative to search filters)")
 
     # Temporal queries

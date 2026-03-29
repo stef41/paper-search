@@ -6844,7 +6844,9 @@ class GraphEngine:
                 "type": step.type,
                 "limit": step.limit,
             }
-            step_params.update(step.params)
+            # Merge step.params but don't allow overriding type/limit
+            step_params.update({k: v for k, v in step.params.items()
+                                if k not in ("type", "limit")})
 
             # Feed previous step's node IDs as seeds
             if current_paper_ids is not None:
@@ -7166,7 +7168,8 @@ class GraphEngine:
             "type": gq.subgraph_algorithm,
             "limit": limit,
         }
-        algo_params.update(gq.subgraph_params)
+        algo_params.update({k: v for k, v in gq.subgraph_params.items()
+                            if k not in ("type", "limit")})
 
         # For algorithms needing seed_arxiv_ids, pass paper IDs from the subgraph
         if sf.seed_arxiv_ids:
