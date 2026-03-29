@@ -435,6 +435,19 @@ class GraphEngine:
         """Execute an ES search, injecting KNN if semantic similarity is active."""
         knn = self._build_knn(sr, emb)
         if knn:
+            # Apply the body's query as KNN filter so KNN results respect
+            # any handler-specific constraints added beyond _base_query.
+            q = body.get("query")
+            requested_size = body.get("size", 50)
+            entries = knn if isinstance(knn, list) else [knn]
+            for entry in entries:
+                if q:
+                    entry["filter"] = q
+                # Override k to match the graph handler's actual result size
+                # (the default k is derived from SearchRequest pagination
+                # which is unrelated to the graph query's size needs).
+                entry["k"] = min(max(requested_size, entry.get("k", 20)), 100)
+                entry["num_candidates"] = min(entry["k"] * 10, 1000)
             body["knn"] = knn
         return await self.client.search(
             index=self.index, body=body,
