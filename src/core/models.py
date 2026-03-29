@@ -273,9 +273,6 @@ class StatsResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
-    elasticsearch: str
-    redis: str
-    total_papers: int
 
 
 # ── Graph Query Models ──

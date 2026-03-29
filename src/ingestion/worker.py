@@ -149,7 +149,7 @@ def parse_oai_record(record_xml: Any) -> dict | None:
         "primary_category": categories[0] if categories else None,
         "submitted_date": submitted_date.isoformat() if submitted_date else None,
         "updated_date": updated_date.isoformat() if updated_date else None,
-        "published_date": None,
+        "published_date": submitted_date.isoformat() if submitted_date else None,
         "doi": doi,
         "journal_ref": journal_ref,
         "comments": comments,

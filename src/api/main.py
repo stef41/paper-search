@@ -221,7 +221,10 @@ def create_app() -> FastAPI:
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Cache-Control"] = "no-store"
-        response.headers["Content-Security-Policy"] = "default-src 'none'"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'" if request.url.path not in ("/docs", "/redoc", "/openapi.json")
+            else "default-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' https://fastapi.tiangolo.com data:; font-src 'self' data:"
+        )
         return response
 
     # ── Routes ──

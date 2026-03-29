@@ -147,8 +147,17 @@ async def resolve_openalex_ids(
 async def fetch_papers(http: httpx.AsyncClient, mode: str, limit: int, stale_days: int) -> list[dict]:
     """Fetch papers needing reference enrichment."""
     if mode == "unenriched":
+        # Match papers with no enrichment_source, OR papers enriched by
+        # Semantic Scholar (enrich.py) that still lack reference_ids —
+        # S2 enrichment sets citation stats but not reference links.
         query = {
-            "query": {"bool": {"must_not": [{"exists": {"field": "enrichment_source"}}]}},
+            "query": {"bool": {"should": [
+                {"bool": {"must_not": [{"exists": {"field": "enrichment_source"}}]}},
+                {"bool": {
+                    "must": [{"term": {"enrichment_source": "semantic_scholar"}}],
+                    "must_not": [{"exists": {"field": "reference_ids"}}],
+                }},
+            ], "minimum_should_match": 1}},
             "size": min(limit, 10000),
             "sort": [{"submitted_date": {"order": "desc"}}],
             "_source": ["arxiv_id"],
