@@ -76,9 +76,11 @@ def parse_kaggle_record(record: dict) -> dict | None:
                 })
     else:
         # Fallback: parse from authors string
+        # Split on ' and ' only — the ',\s*(?=[A-Z])' split incorrectly
+        # fragments "Last, First" name pairs into separate entries.
         authors_str = record.get("authors", "")
         if authors_str:
-            for i, name in enumerate(re.split(r"\s+and\s+|,\s*(?=[A-Z])", authors_str)):
+            for i, name in enumerate(re.split(r"\s+and\s+", authors_str)):
                 name = name.strip().rstrip(",")
                 if name:
                     authors.append({

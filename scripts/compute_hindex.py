@@ -56,6 +56,9 @@ async def scan_papers_with_citations(http: httpx.AsyncClient) -> dict[str, list[
 
     r = await http.post(f"{ES_URL}/{INDEX}/_search?scroll=5m", json=query)
     data = r.json()
+    if r.status_code != 200 or "hits" not in data:
+        print(f"ES search failed (status {r.status_code}): {str(data)[:300]}")
+        return dict(author_papers)
     scroll_id = data.get("_scroll_id")
     hits = data["hits"]["hits"]
 
@@ -80,6 +83,9 @@ async def scan_papers_with_citations(http: httpx.AsyncClient) -> dict[str, list[
             json={"scroll": "5m", "scroll_id": scroll_id},
         )
         data = r.json()
+        if r.status_code != 200 or "hits" not in data:
+            print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
+            break
         scroll_id = data.get("_scroll_id")
         hits = data["hits"]["hits"]
 
@@ -114,6 +120,9 @@ async def update_h_indices(
 
     r = await http.post(f"{ES_URL}/{INDEX}/_search?scroll=5m", json=query)
     data = r.json()
+    if r.status_code != 200 or "hits" not in data:
+        print(f"ES search failed (status {r.status_code}): {str(data)[:300]}")
+        return 0
     scroll_id = data.get("_scroll_id")
     hits = data["hits"]["hits"]
 
@@ -132,7 +141,7 @@ async def update_h_indices(
                     ac = dict(a)
                     name = ac.get("name", "").strip()
                     h_val = h_indices.get(name)
-                    if h_val is not None and (ac.get("h_index") is None or ac.get("h_index", 0) < h_val):
+                    if h_val is not None and ac.get("h_index") != h_val:
                         ac["h_index"] = h_val
                         has_update = True
                     updated_authors.append(ac)
@@ -173,6 +182,9 @@ async def update_h_indices(
             json={"scroll": "5m", "scroll_id": scroll_id},
         )
         data = r.json()
+        if r.status_code != 200 or "hits" not in data:
+            print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
+            break
         scroll_id = data.get("_scroll_id")
         hits = data["hits"]["hits"]
 

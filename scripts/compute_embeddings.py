@@ -44,7 +44,11 @@ def main():
         r = http.post(f"{ES_URL}/{INDEX}/_count", json={
             "query": {"bool": {"must_not": [{"exists": {"field": "title_embedding"}}]}}
         })
-        unembedded = r.json()["count"]
+        count_data = r.json()
+        if r.status_code != 200 or "count" not in count_data:
+            print(f"ES count failed (status {r.status_code}): {str(count_data)[:300]}")
+            return
+        unembedded = count_data["count"]
 
     target = unembedded if args.max_papers == 0 else min(args.max_papers, unembedded)
     print(f"Papers without embeddings: {unembedded:,}")
@@ -64,6 +68,9 @@ def main():
             "sort": [{"_doc": "asc"}],
         })
         data = r.json()
+        if r.status_code != 200 or "hits" not in data:
+            print(f"ES search failed (status {r.status_code}): {str(data)[:300]}")
+            return
         scroll_id = data.get("_scroll_id")
         hits = data["hits"]["hits"]
 
@@ -136,6 +143,9 @@ def main():
                 "scroll": "10m", "scroll_id": scroll_id,
             })
             data = r.json()
+            if r.status_code != 200 or "hits" not in data:
+                print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
+                break
             scroll_id = data.get("_scroll_id")
             hits = data.get("hits", {}).get("hits", [])
 

@@ -51,6 +51,9 @@ async def scan_references(http: httpx.AsyncClient) -> dict[str, list[str]]:
         json=query,
     )
     data = r.json()
+    if r.status_code != 200 or "hits" not in data:
+        print(f"ES search failed (status {r.status_code}): {str(data)[:300]}")
+        return dict(cited_by)
     scroll_id = data.get("_scroll_id")
     hits = data["hits"]["hits"]
 
@@ -71,6 +74,9 @@ async def scan_references(http: httpx.AsyncClient) -> dict[str, list[str]]:
             json={"scroll": "5m", "scroll_id": scroll_id},
         )
         data = r.json()
+        if r.status_code != 200 or "hits" not in data:
+            print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
+            break
         scroll_id = data.get("_scroll_id")
         hits = data["hits"]["hits"]
 
@@ -104,7 +110,11 @@ async def resolve_arxiv_ids_to_doc_ids(
             "_source": ["arxiv_id"],
         }
         r = await http.post(f"{ES_URL}/{INDEX}/_search", json=query)
-        for h in r.json()["hits"]["hits"]:
+        resp_data = r.json()
+        if r.status_code != 200 or "hits" not in resp_data:
+            print(f"  ES resolve failed (status {r.status_code}): {str(resp_data)[:200]}")
+            continue
+        for h in resp_data["hits"]["hits"]:
             mapping[h["_source"]["arxiv_id"]] = h["_id"]
 
     return mapping
