@@ -4767,9 +4767,9 @@ class GraphEngine:
         N = len(node_list)
         idx = {aid: i for i, aid in enumerate(node_list)}
 
-        # Estimate max degree as proxy for spectral radius; cap alpha for convergence
-        max_degree = max((len(undirected.get(n, set())) for n in node_list), default=1) or 1
-        alpha = min(alpha, 0.9 / max_degree)
+        # Estimate max in-degree as proxy for spectral radius; cap alpha for convergence
+        max_in_degree = max((len(in_edges.get(n, set())) for n in node_list), default=1) or 1
+        alpha = min(alpha, 0.9 / max_in_degree)
 
         katz = [1.0] * N
 
@@ -4777,8 +4777,8 @@ class GraphEngine:
         for it in range(max_iter):
             new_katz = [1.0] * N  # β = 1
             for i, aid in enumerate(node_list):
-                for nbr in undirected.get(aid, set()):
-                    j = idx.get(nbr)
+                for citer in in_edges.get(aid, set()):
+                    j = idx.get(citer)
                     if j is not None:
                         new_katz[i] += alpha * katz[j]
             max_delta = max(abs(new_katz[i] - katz[i]) for i in range(N))
@@ -6169,8 +6169,10 @@ class GraphEngine:
             # Co-authorship projection
             paper_authors: dict[str, list[str]] = {}
             for aid, src in paper_data.items():
-                paper_authors[aid] = [a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")
-                                       for a in (src.get("authors") or [])[:15] if a]
+                paper_authors[aid] = [name for a in (src.get("authors") or [])[:15]
+                                       if a
+                                       for name in [a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")]
+                                       if name]
 
             author_coauth: Counter[tuple[str, str]] = Counter()
             for aid, authors in paper_authors.items():
@@ -6651,7 +6653,7 @@ class GraphEngine:
                         except (TypeError, ValueError):
                             return str(a), str(b)
 
-                    if wc.op in (">", "<", ">=", "<="):
+                    if wc.op in (">", "<", ">=", "<=", "==", "!="):
                         cmp_l, cmp_r = _compare(left_val, right_val)
                         if wc.op == ">" and not (cmp_l > cmp_r):
                             return False
@@ -6661,22 +6663,26 @@ class GraphEngine:
                             return False
                         elif wc.op == "<=" and not (cmp_l <= cmp_r):
                             return False
-                    elif wc.op == "==" and str(left_val) != str(right_val):
-                        return False
-                    elif wc.op == "!=" and str(left_val) == str(right_val):
-                        return False
+                        elif wc.op == "==" and cmp_l != cmp_r:
+                            return False
+                        elif wc.op == "!=" and cmp_l == cmp_r:
+                            return False
                     elif wc.op == "in":
                         if isinstance(right_val, list):
                             if str(left_val) not in [str(x) for x in right_val]:
                                 return False
-                        elif str(left_val) not in str(right_val):
-                            return False
+                        else:
+                            cmp_l, cmp_r = _compare(left_val, right_val)
+                            if cmp_l != cmp_r:
+                                return False
                     elif wc.op == "not_in":
                         if isinstance(right_val, list):
                             if str(left_val) in [str(x) for x in right_val]:
                                 return False
-                        elif str(left_val) in str(right_val):
-                            return False
+                        else:
+                            cmp_l, cmp_r = _compare(left_val, right_val)
+                            if cmp_l == cmp_r:
+                                return False
                     elif wc.op == "contains":
                         if isinstance(left_val, list):
                             if str(right_val) not in [str(x) for x in left_val]:
