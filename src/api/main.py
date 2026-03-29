@@ -95,7 +95,7 @@ async def _resolve_embeddings(
             continue
         emb = await get_cached_embedding(redis_client, sq.text, sq.level.value)
         if emb is None:
-            emb = await asyncio.get_event_loop().run_in_executor(None, encode_text, sq.text)
+            emb = await asyncio.get_running_loop().run_in_executor(None, encode_text, sq.text)
             await cache_embedding(redis_client, sq.text, sq.level.value, emb)
         result.append((sq, emb))
     return result

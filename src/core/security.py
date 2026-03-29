@@ -11,6 +11,7 @@ from fastapi import HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 
 from src.core.config import get_settings
+from src.core.models import SemanticMode, SimilarityLevel
 
 logger = structlog.get_logger()
 
@@ -106,16 +107,23 @@ def validate_search_request(request: Any) -> None:
                 detail=f"min_{name} ({min_val}) cannot exceed max_{name} ({max_val})",
             )
 
-    # KNN (semantic) search caps at k=100; deep pagination silently loses results
+    # KNN (semantic) search caps at k=100; deep pagination silently loses results.
+    # Only applies when BOOST-mode KNN clauses will actually be generated.
     KNN_K_CAP = 100
-    has_semantic = getattr(request, "semantic", None) is not None
-    if has_semantic and request.offset + request.limit > KNN_K_CAP:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Semantic search pagination limited to {KNN_K_CAP} results. "
-                f"offset ({request.offset}) + limit ({request.limit}) = "
-                f"{request.offset + request.limit} exceeds this cap. "
-                f"Use narrower filters or reduce offset."
-            ),
+    sem = getattr(request, "semantic", None)
+    if sem is not None:
+        sem_list = sem if isinstance(sem, list) else [sem]
+        has_knn = any(
+            sq.mode == SemanticMode.BOOST and sq.level != SimilarityLevel.PARAGRAPH
+            for sq in sem_list
         )
+        if has_knn and request.offset + request.limit > KNN_K_CAP:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Semantic search pagination limited to {KNN_K_CAP} results. "
+                    f"offset ({request.offset}) + limit ({request.limit}) = "
+                    f"{request.offset + request.limit} exceeds this cap. "
+                    f"Use narrower filters or reduce offset."
+                ),
+            )
