@@ -6859,7 +6859,11 @@ class GraphEngine:
                                          })
                 step_params["seed_arxiv_ids"] = current_paper_ids[:2000]
 
-            step_gq = GraphQuery(**step_params)
+            try:
+                step_gq = GraphQuery(**step_params)
+            except Exception as e:
+                return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
+                                     metadata={"error": f"Invalid params in step {step_idx}: {e}"})
 
             # Use the same handler dispatch
             handler = {
@@ -7175,7 +7179,11 @@ class GraphEngine:
         if sf.seed_arxiv_ids:
             algo_params["seed_arxiv_ids"] = sf.seed_arxiv_ids[:10000]
 
-        algo_gq = GraphQuery(**algo_params)
+        try:
+            algo_gq = GraphQuery(**algo_params)
+        except Exception as e:
+            return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
+                                 metadata={"error": f"Invalid subgraph_params: {e}"})
 
         # Constrain the algorithm to our exact projected paper IDs.
         # This seed list is honoured by _build_citation_subgraph; for handlers

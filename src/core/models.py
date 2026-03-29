@@ -427,8 +427,8 @@ class SubgraphFilter(BaseModel):
     categories: list[str] | None = Field(default=None, max_length=50, description="Only papers in these categories")
     exclude_categories: list[str] | None = Field(default=None, max_length=50, description="Exclude papers in these categories")
     primary_category: str | None = Field(default=None, description="Only papers with this primary category")
-    date_from: str | None = Field(default=None, description="Papers submitted after this date (YYYY-MM-DD)")
-    date_to: str | None = Field(default=None, description="Papers submitted before this date (YYYY-MM-DD)")
+    date_from: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}", description="Papers submitted after this date (YYYY-MM-DD)")
+    date_to: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}", description="Papers submitted before this date (YYYY-MM-DD)")
     min_citations: int | None = Field(default=None, ge=0)
     max_citations: int | None = Field(default=None, ge=0)
     has_github: bool | None = None
