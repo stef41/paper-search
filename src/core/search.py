@@ -322,14 +322,26 @@ class QueryBuilder:
             else knn_filter_parts[0] if knn_filter_parts else None
         )
 
+        KNN_K_CAP = 100
+        requested_k = self.req.offset + self.req.limit
+        if requested_k > KNN_K_CAP:
+            logger.warning(
+                "knn_pagination_truncated",
+                offset=self.req.offset,
+                limit=self.req.limit,
+                k_cap=KNN_K_CAP,
+                msg=f"offset+limit={requested_k} exceeds knn k cap ({KNN_K_CAP}); "
+                    f"semantic results will be incomplete beyond position {KNN_K_CAP}",
+            )
+
         knns: list[dict[str, Any]] = []
         for sq, emb in boost_entries:
             field = field_map.get(sq.level, "abstract_embedding")
             knn: dict[str, Any] = {
                 "field": field,
                 "query_vector": emb,
-                "k": min(self.req.offset + self.req.limit, 100),
-                "num_candidates": min((self.req.offset + self.req.limit) * 10, 1000),
+                "k": min(requested_k, KNN_K_CAP),
+                "num_candidates": min(requested_k * 10, 1000),
                 "boost": sq.weight,
             }
             if knn_filter:

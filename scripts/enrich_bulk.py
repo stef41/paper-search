@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import httpx
 
 S2_API = "https://api.semanticscholar.org/graph/v1"
-S2_FIELDS = "citationCount,citations.externalIds,citations.fieldsOfStudy,citations.citationCount,authors.hIndex,references.externalIds,externalIds"
+S2_FIELDS = "citationCount,citations.externalIds,citations.fieldsOfStudy,citations.citationCount,citations.authors.hIndex,authors.hIndex,references.externalIds,externalIds"
 ES_URL = "http://localhost:9200"
 INDEX = "arxiv_papers"
 BATCH_SIZE = 100  # S2 allows up to 500 per batch request
@@ -102,18 +102,19 @@ async def main():
                             citing_cats[fos] = citing_cats.get(fos, 0) + 1
                 top_citing = sorted(citing_cats.keys(), key=lambda k: -citing_cats[k])[:10]
 
-                # Author h-indices
+                # Authors
                 authors = s2_data.get("authors") or []
-                h_indices = [a.get("hIndex") for a in authors if a.get("hIndex") is not None]
 
-                # Median citation count of citing papers
-                citing_citation_counts = []
+                # Median h-index of citing authors
+                citing_h_indices = []
                 for cit in (s2_data.get("citations") or []):
                     if isinstance(cit, dict):
-                        cc = cit.get("citationCount")
-                        if cc is not None:
-                            citing_citation_counts.append(cc)
-                median_h = statistics.median(citing_citation_counts) if citing_citation_counts else None
+                        for a in (cit.get("authors") or []):
+                            if isinstance(a, dict):
+                                h = a.get("hIndex")
+                                if h is not None:
+                                    citing_h_indices.append(h)
+                median_h = statistics.median(citing_h_indices) if citing_h_indices else None
 
                 refs = s2_data.get("references") or []
                 citations_list = s2_data.get("citations") or []

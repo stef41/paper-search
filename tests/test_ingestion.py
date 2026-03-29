@@ -332,8 +332,10 @@ class TestEnrichmentComputation:
                 {"hIndex": 32, "citationCount": 8000},
             ],
             "citations": [
-                {"citationCount": 100, "fieldsOfStudy": ["Computer Science"]},
-                {"citationCount": 50, "fieldsOfStudy": ["Computer Science", "Mathematics"]},
+                {"citationCount": 100, "fieldsOfStudy": ["Computer Science"],
+                 "authors": [{"hIndex": 30}, {"hIndex": 20}]},
+                {"citationCount": 50, "fieldsOfStudy": ["Computer Science", "Mathematics"],
+                 "authors": [{"hIndex": 25}]},
             ],
             "references": [
                 {"fieldsOfStudy": ["Computer Science"]},

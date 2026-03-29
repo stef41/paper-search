@@ -27,7 +27,7 @@ from src.core.elasticsearch import get_es_client, ensure_index, close_es_client
 logger = structlog.get_logger()
 
 S2_API = "https://api.semanticscholar.org/graph/v1"
-S2_FIELDS = "citationCount,influentialCitationCount,references.fieldsOfStudy,citations.citationCount,citations.fieldsOfStudy,authors.hIndex,authors.citationCount,externalIds"
+S2_FIELDS = "citationCount,influentialCitationCount,references.fieldsOfStudy,citations.citationCount,citations.fieldsOfStudy,citations.authors.hIndex,authors.hIndex,authors.citationCount,externalIds"
 
 # Semantic Scholar rate limit: 100 requests per 5 minutes (free tier)
 S2_DELAY = 3.1  # seconds between requests
@@ -73,25 +73,27 @@ def compute_enrichment(s2_data: dict) -> dict:
     authors = s2_data.get("authors", [])
     if authors:
         result["first_author_h_index"] = authors[0].get("hIndex")
-        h_indices = [a.get("hIndex") for a in authors if a.get("hIndex") is not None]
 
     # Citation stats
     citation_count = s2_data.get("citationCount", 0) or 0
     citations = s2_data.get("citations", []) or []
 
-    citing_citation_counts = []
+    citing_h_indices = []
     citing_categories = []
     for cit in citations:
         if isinstance(cit, dict):
-            cc = cit.get("citationCount")
-            if cc is not None:
-                citing_citation_counts.append(cc)
+            # Collect h-indices of citing papers' authors
+            for a in (cit.get("authors") or []):
+                if isinstance(a, dict):
+                    h = a.get("hIndex")
+                    if h is not None:
+                        citing_h_indices.append(h)
             fos = cit.get("fieldsOfStudy") or []
             citing_categories.extend(fos)
 
-    median_citing_citations = None
-    if citing_citation_counts:
-        median_citing_citations = statistics.median(citing_citation_counts)
+    median_h_index_citing = None
+    if citing_h_indices:
+        median_h_index_citing = statistics.median(citing_h_indices)
 
     # Top citing categories
     cat_counts: dict[str, int] = {}
@@ -102,7 +104,7 @@ def compute_enrichment(s2_data: dict) -> dict:
     result["citation_stats"] = {
         "total_citations": citation_count,
         "avg_citation_age_years": None,  # Would need publication dates of citing papers
-        "median_h_index_citing_authors": median_citing_citations,
+        "median_h_index_citing_authors": median_h_index_citing,
         "top_citing_categories": top_cats,
     }
 
