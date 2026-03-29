@@ -133,6 +133,8 @@ class SearchRequest(BaseModel):
         if isinstance(v, SemanticQuery):
             return [v]
         if isinstance(v, list):
+            if len(v) > 10:
+                raise ValueError("At most 10 semantic queries allowed")
             return v
         return v
 
@@ -644,6 +646,8 @@ class GraphSearchRequest(BaseModel):
         if isinstance(v, SemanticQuery):
             return [v]
         if isinstance(v, list):
+            if len(v) > 10:
+                raise ValueError("At most 10 semantic queries allowed")
             return v
         return v
 

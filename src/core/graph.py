@@ -1990,11 +1990,13 @@ class GraphEngine:
                 },
             ))
 
+        cat_ids = {n.id for n in nodes}
         for b in resp["aggregations"]["by_domain"]["buckets"]:
-            nodes.append(GraphNode(
-                id=b["key"], label=b["key"], type="domain",
-                properties={"github_papers": b["doc_count"]},
-            ))
+            if b["key"] not in cat_ids:
+                nodes.append(GraphNode(
+                    id=b["key"], label=b["key"], type="domain",
+                    properties={"github_papers": b["doc_count"]},
+                ))
 
         for tb in resp["aggregations"]["over_time"]["buckets"]:
             time_key = tb["key_as_string"]
@@ -4106,8 +4108,8 @@ class GraphEngine:
         sr: SearchRequest | None,
         emb: list[float] | None,
     ) -> GraphResponse:
-        """Eigenvector centrality via power iteration on the undirected
-        citation graph.  A node is important if it is connected to other
+        """Eigenvector centrality via power iteration on the directed
+        citation graph.  A node is important if it is cited by other
         important nodes (recursive prestige)."""
         import math
 
@@ -4133,7 +4135,7 @@ class GraphEngine:
         for iteration in range(max_iter):
             new_scores = [0.0] * N
             for i, aid in enumerate(node_list):
-                for nbr in undirected.get(aid, set()):
+                for nbr in in_edges.get(aid, set()):
                     j = idx_map.get(nbr)
                     if j is not None:
                         new_scores[i] += scores[j]

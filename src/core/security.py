@@ -70,6 +70,20 @@ def validate_regex_pattern(pattern: str, max_length: int = 200) -> str:
             detail=f"Invalid regex pattern: {exc}",
         )
 
+    # Reject Python/PCRE features that Lucene doesn't support.
+    # Lucene regex (with flags=NONE) only supports: . * + ? | {} [] () ^ $
+    # and character classes like \d \w \s.
+    _unsupported = re.compile(
+        r"\(\?"       # (?:...) (?=...) (?!...) (?i) etc.
+        r"|\\b|\\B"   # word boundaries
+    )
+    if _unsupported.search(pattern):
+        raise HTTPException(
+            status_code=400,
+            detail="Regex uses features not supported by Elasticsearch (e.g. (?:...), \\b). "
+                   "Use only basic regex: . * + ? | {} [] () ^ $",
+        )
+
     return pattern
 
 

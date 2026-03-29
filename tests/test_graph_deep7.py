@@ -522,7 +522,7 @@ async def test_aggregation_count(c: httpx.AsyncClient):
         "query": "machine learning",
         "graph": {
             "type": "category_diversity",
-            "max_papers": 20,
+            "limit": 20,
             "aggregations": [{"function": "count", "alias": "total"}],
         },
     }, name)
@@ -548,7 +548,7 @@ async def test_aggregation_avg(c: httpx.AsyncClient):
         "query": "machine learning",
         "graph": {
             "type": "category_diversity",
-            "max_papers": 20,
+            "limit": 20,
             "aggregations": [{"function": "avg", "field": "citations", "alias": "avg_cit"}],
         },
     }, name)
@@ -572,7 +572,7 @@ async def test_aggregation_sum(c: httpx.AsyncClient):
         "query": "deep learning",
         "graph": {
             "type": "category_diversity",
-            "max_papers": 20,
+            "limit": 20,
             "aggregations": [{"function": "sum", "field": "citations", "alias": "sum_cit"}],
         },
     }, name)
@@ -595,7 +595,7 @@ async def test_aggregation_min_max(c: httpx.AsyncClient):
         "query": "deep learning",
         "graph": {
             "type": "category_diversity",
-            "max_papers": 30,
+            "limit": 30,
             "aggregations": [
                 {"function": "min", "field": "citations", "alias": "min_cit"},
                 {"function": "max", "field": "citations", "alias": "max_cit"},
@@ -622,7 +622,7 @@ async def test_aggregation_collect(c: httpx.AsyncClient):
         "query": "deep learning",
         "graph": {
             "type": "category_diversity",
-            "max_papers": 10,
+            "limit": 10,
             "aggregations": [{"function": "collect", "field": "primary_category", "alias": "cats"}],
         },
     }, name)
@@ -645,7 +645,7 @@ async def test_aggregation_group_count(c: httpx.AsyncClient):
         "query": "deep learning",
         "graph": {
             "type": "category_diversity",
-            "max_papers": 30,
+            "limit": 30,
             "aggregations": [{"function": "group_count", "field": "primary_category", "alias": "dist"}],
         },
     }, name)
@@ -675,7 +675,7 @@ async def test_aggregation_multi(c: httpx.AsyncClient):
         "query": "machine learning",
         "graph": {
             "type": "category_diversity",
-            "max_papers": 20,
+            "limit": 20,
             "aggregations": [
                 {"function": "count", "alias": "total"},
                 {"function": "avg", "field": "citations", "alias": "avg_cit"},
@@ -730,7 +730,7 @@ async def test_aggregation_empty_results(c: httpx.AsyncClient):
         "query": "xyzzy_nonexistent_query_12345",
         "graph": {
             "type": "category_diversity",
-            "max_papers": 5,
+            "limit": 5,
             "aggregations": [
                 {"function": "count", "alias": "total"},
                 {"function": "avg", "field": "citations", "alias": "avg_cit"},
@@ -918,7 +918,7 @@ async def test_nested_subgraph_projection_in_pipeline(c: httpx.AsyncClient):
                             "direction": "both",
                             "max_nodes": 100,
                         },
-                        "subgraph_algo": "degree_centrality",
+                        "subgraph_algorithm": "degree_centrality",
                     },
                 },
             ],
@@ -931,7 +931,7 @@ async def test_nested_subgraph_projection_in_pipeline(c: httpx.AsyncClient):
     if len(steps) >= 2 and steps[1]["type"] == "subgraph_projection":
         ok(name, data["took_ms"], f"subgraph_projection in pipeline, nodes={steps[1].get('nodes_produced', '?')}")
     else:
-        ok(name, data["took_ms"], f"pipeline completed, output_type={meta.get('pipeline_output_type')}")
+        fail(name, data["took_ms"], f"Expected subgraph_projection step, got: {[s.get('type') for s in steps]}")
 
 
 async def test_nested_pipeline_in_pipeline_blocked(c: httpx.AsyncClient):
@@ -999,7 +999,7 @@ async def test_nested_three_steps_with_pattern_match(c: httpx.AsyncClient):
         ok(name, data["took_ms"],
            f"3-step pipeline: [{steps[0]['type']}→{steps[1]['type']}→{steps[2]['type']}]")
     else:
-        ok(name, data["took_ms"], f"pipeline completed with {len(steps)} steps")
+        fail(name, data["took_ms"], f"Expected 3 pipeline steps, got {len(steps)}")
 
 
 async def test_nested_pattern_match_feeds_ids(c: httpx.AsyncClient):
@@ -1105,7 +1105,7 @@ async def test_combined_pipeline_with_aggregation(c: httpx.AsyncClient):
     if "total" in aggs:
         ok(name, data["took_ms"], f"pipeline + aggregations: total={aggs['total']}, dist_keys={len(aggs.get('dist', {}))}")
     else:
-        ok(name, data["took_ms"], f"pipeline completed, aggregations may be on pipeline output")
+        fail(name, data["took_ms"], f"Aggregations missing from pipeline output: keys={list(data.get('metadata', {}).keys())}")
 
 
 # ═══════════════════════════════════════════════════════
