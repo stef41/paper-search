@@ -29,7 +29,7 @@ OAI_NAMESPACES = {
 }
 
 GITHUB_RE = re.compile(
-    r"https?://github\.com/[\w\-\.]+/[\w\-\.]+"
+    r"https?://github\.com/[\w\-\.]+/[\w\-\.]+(?<![.])"
 )
 
 

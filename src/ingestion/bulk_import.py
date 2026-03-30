@@ -32,7 +32,7 @@ from src.ingestion.state import save_state, get_state
 
 logger = structlog.get_logger()
 
-GITHUB_RE = re.compile(r"https?://github\.com/[\w\-\.]+/[\w\-\.]+")
+GITHUB_RE = re.compile(r"https?://github\.com/[\w\-\.]+/[\w\-\.]+(?<![.])")
 
 
 def parse_kaggle_record(record: dict) -> dict | None:

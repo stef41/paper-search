@@ -48,7 +48,7 @@ DEFAULT_CATEGORIES = [
     "quant-ph",
 ]
 
-GITHUB_RE = re.compile(r"https?://github\.com/[\w\-\.]+/[\w\-\.]+")
+GITHUB_RE = re.compile(r"https?://github\.com/[\w\-\.]+/[\w\-\.]+(?<![.])")
 
 
 def parse_api_entry(entry) -> dict | None:
