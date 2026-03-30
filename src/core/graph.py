@@ -1503,7 +1503,7 @@ class GraphEngine:
 
         edge_count = 0
         for sp in seed_papers:
-            for ref_id in (sp.get(field, []) or []):
+            for ref_id in set(sp.get(field, []) or []):
                 if ref_id in linked_map and edge_count < limit * 10:
                     lp = linked_map[ref_id]
                     if ref_id not in seen:
@@ -2298,7 +2298,7 @@ class GraphEngine:
         for hop in range(1, max_hops + 1):
             next_ids: set[str] = set()
             for aid, src in current_frontier.items():
-                for linked_id in (src.get(field, []) or []):
+                for linked_id in set(src.get(field, []) or []):
                     # Add edge for all links (including back-edges to already-seen nodes)
                     if direction == "references":
                         edges.append(GraphEdge(source=aid, target=linked_id, relation="cites"))
