@@ -76,8 +76,9 @@ def arxiv_to_doi(arxiv_id: str) -> str:
 
 
 def doi_to_arxiv(doi: str) -> str | None:
-    if "10.48550/arxiv." in doi:
-        return doi.split("10.48550/arxiv.")[1]
+    doi_lower = doi.lower()
+    if "10.48550/arxiv." in doi_lower:
+        return doi_lower.split("10.48550/arxiv.")[1]
     return None
 
 
@@ -125,7 +126,10 @@ async def resolve_openalex_ids(
         try:
             r = await http.get(f"{OPENALEX_API}/works", params=params)
             if r.status_code == 429:
-                wait = min(int(r.headers.get("Retry-After", 60)), 120)
+                try:
+                    wait = min(int(r.headers.get("Retry-After", 60)), 120)
+                except (ValueError, TypeError):
+                    wait = 60
                 print(f"    Rate limited, waiting {wait}s...")
                 await asyncio.sleep(wait)
                 r = await http.get(f"{OPENALEX_API}/works", params=params)
@@ -169,7 +173,10 @@ async def openalex_fetch_refs_batch(
             if r.status_code == 200:
                 break
             if r.status_code == 429:
-                wait = min(int(r.headers.get("Retry-After", 60)), 120)
+                try:
+                    wait = min(int(r.headers.get("Retry-After", 60)), 120)
+                except (ValueError, TypeError):
+                    wait = 60
                 print(f"    Rate limited, waiting {wait}s...")
                 await asyncio.sleep(wait)
                 continue

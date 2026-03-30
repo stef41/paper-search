@@ -24,11 +24,17 @@ async def fetch_s2(http: httpx.AsyncClient, arxiv_id: str) -> dict | None:
         try:
             r = await http.get(url, params={"fields": S2_FIELDS}, timeout=30)
             if r.status_code == 200:
-                return r.json()
+                try:
+                    return r.json()
+                except (ValueError, Exception):
+                    return None
             if r.status_code == 404:
                 return None
             if r.status_code == 429:
-                wait = int(r.headers.get("Retry-After", 60))
+                try:
+                    wait = int(r.headers.get("Retry-After", 60))
+                except (ValueError, TypeError):
+                    wait = 60
                 print(f"    rate-limited, waiting {wait}s")
                 await asyncio.sleep(wait)
                 continue
