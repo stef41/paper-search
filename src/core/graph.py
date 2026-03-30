@@ -7323,6 +7323,8 @@ class GraphEngine:
                     nbr_filters.append({"range": {"citation_stats.total_citations": {"lte": sf.max_citations}}})
                 if sf.has_github is not None:
                     nbr_filters.append({"term": {"has_github": sf.has_github}})
+                if sf.authors:
+                    nbr_filters.append({"bool": {"should": [{"match": {"authors.name": a}} for a in sf.authors]}})
                 if len(nbr_filters) > 1:
                     nbr_query = {"bool": {"filter": nbr_filters}}
                 return await self.client.options(request_timeout=15).search(
