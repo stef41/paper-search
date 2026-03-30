@@ -599,7 +599,7 @@ class GraphEngine:
             "size": limit,
             "min_score": min_cats,
             "_source": ["arxiv_id", "title", "categories", "primary_category",
-                         "authors", "submitted_date", "citation_stats"],
+                         "authors", "submitted_date", "citation_stats", "has_github"],
         }
         resp = await self._do_search(body) if sem_ids is not None else await self._do_search(body, sr, emb)
 
@@ -1007,7 +1007,7 @@ class GraphEngine:
             "size": min(limit * 4, 800),  # oversample to filter
             "min_score": min_cats,
             "_source": ["arxiv_id", "title", "categories", "primary_category",
-                         "authors", "submitted_date", "citation_stats"],
+                         "authors", "submitted_date", "citation_stats", "has_github"],
         }
         papers_resp = await self._do_search(body) if sem_ids is not None else await self._do_search(body, sr, emb)
 
@@ -1168,7 +1168,7 @@ class GraphEngine:
             "sort": [{"citation_stats.total_citations": {"order": "desc"}}],
             "_source": [
                 "arxiv_id", "title", "categories", "primary_category",
-                "authors", "submitted_date", "citation_stats",
+                "authors", "submitted_date", "citation_stats", "has_github",
             ],
         }
         papers_resp = await self._do_search(body, sr, emb)
@@ -1273,7 +1273,7 @@ class GraphEngine:
             "query": seed_query,
             "size": min(limit * 2, 10000),
             "_source": ["arxiv_id", "title", "categories", "primary_category",
-                         "authors", "submitted_date", "citation_stats", field],
+                         "authors", "submitted_date", "citation_stats", "has_github", field],
         }
         seed_resp = await self._do_search(seed_body, sr, emb)
 
@@ -1444,7 +1444,7 @@ class GraphEngine:
             "size": min(limit * 10, 10000),
             "_source": [
                 "arxiv_id", "title", "categories", "primary_category",
-                "authors", "submitted_date", "citation_stats", field,
+                "authors", "submitted_date", "citation_stats", "has_github", field,
             ],
         }
         seed_resp = await self._do_search(seed_body, sr, emb)
@@ -1475,7 +1475,7 @@ class GraphEngine:
             "size": min(len(linked_ids), limit * 5, 500),
             "_source": [
                 "arxiv_id", "title", "categories", "primary_category",
-                "authors", "submitted_date", "citation_stats",
+                "authors", "submitted_date", "citation_stats", "has_github",
             ],
         })
         linked_map: dict[str, dict] = {}
@@ -1715,7 +1715,7 @@ class GraphEngine:
             "size": limit,
             "_source": [
                 "arxiv_id", "title", "categories", "primary_category",
-                "authors", "submitted_date", "citation_stats",
+                "authors", "submitted_date", "citation_stats", "has_github",
                 "abstract_embedding",
             ],
         }
@@ -2086,7 +2086,7 @@ class GraphEngine:
             "size": limit,
             "_source": [
                 "arxiv_id", "title", "categories", "primary_category",
-                "authors", "submitted_date", "citation_stats", "reference_ids",
+                "authors", "submitted_date", "citation_stats", "has_github", "reference_ids",
             ],
         }
         resp = await self._do_search(body, sr, emb)
@@ -2155,6 +2155,7 @@ class GraphEngine:
             seed_citers: list[str] = []
             for hit in seed_resp["hits"]["hits"]:
                 seed_citers = hit["_source"].get("cited_by_ids", []) or []
+            seed_citers = seed_citers[:10000]
             if not seed_citers:
                 return GraphResponse(
                     nodes=[], edges=[], total=0, took_ms=0,
@@ -2178,7 +2179,7 @@ class GraphEngine:
             "size": limit,
             "_source": [
                 "arxiv_id", "title", "categories", "primary_category",
-                "authors", "submitted_date", "citation_stats", "cited_by_ids",
+                "authors", "submitted_date", "citation_stats", "has_github", "cited_by_ids",
             ],
         }
         resp = await self._do_search(body, sr, emb)
@@ -2252,7 +2253,7 @@ class GraphEngine:
             "query": seed_query,
             "size": min(limit * 10, 10000),
             "_source": ["arxiv_id", "title", "categories", "primary_category",
-                         "authors", "submitted_date", "citation_stats", field],
+                         "authors", "submitted_date", "citation_stats", "has_github", field],
         }
         seed_resp = await self._do_search(seed_body, sr, emb)
         if not seed_resp["hits"]["hits"]:
@@ -2956,7 +2957,7 @@ class GraphEngine:
             "query": combined,
             "size": min(limit * 10, 10000),
             "_source": ["arxiv_id", "title", "categories", "primary_category",
-                         "authors", "submitted_date", "citation_stats",
+                         "authors", "submitted_date", "citation_stats", "has_github",
                          "reference_ids", "cited_by_ids"],
         }, sr, emb)
 
