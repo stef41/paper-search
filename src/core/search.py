@@ -243,7 +243,12 @@ class QueryBuilder:
             if self.req.submitted_date.gte:
                 date_range["gte"] = self.req.submitted_date.gte.isoformat()
             if self.req.submitted_date.lte:
-                date_range["lte"] = self.req.submitted_date.lte.isoformat()
+                lte_dt = self.req.submitted_date.lte
+                # Date-only input parses as midnight; round to end-of-day
+                # so "lte: 2024-01-15" includes the entire day.
+                if lte_dt.hour == 0 and lte_dt.minute == 0 and lte_dt.second == 0 and lte_dt.microsecond == 0:
+                    lte_dt = lte_dt.replace(hour=23, minute=59, second=59)
+                date_range["lte"] = lte_dt.isoformat()
             if date_range:
                 filter_clauses.append({"range": {"submitted_date": date_range}})
 
@@ -252,7 +257,10 @@ class QueryBuilder:
             if self.req.updated_date.gte:
                 date_range_u["gte"] = self.req.updated_date.gte.isoformat()
             if self.req.updated_date.lte:
-                date_range_u["lte"] = self.req.updated_date.lte.isoformat()
+                lte_dt_u = self.req.updated_date.lte
+                if lte_dt_u.hour == 0 and lte_dt_u.minute == 0 and lte_dt_u.second == 0 and lte_dt_u.microsecond == 0:
+                    lte_dt_u = lte_dt_u.replace(hour=23, minute=59, second=59)
+                date_range_u["lte"] = lte_dt_u.isoformat()
             if date_range_u:
                 filter_clauses.append({"range": {"updated_date": date_range_u}})
 
