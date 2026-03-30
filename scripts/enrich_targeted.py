@@ -84,7 +84,7 @@ async def main():
                         break
                     if resp.status_code == 429:
                         try:
-                            wait = int(resp.headers.get("Retry-After", 30))
+                            wait = min(int(resp.headers.get("Retry-After", 30)), 120)
                         except (ValueError, TypeError):
                             wait = 30
                         print(f"  Rate limited, waiting {wait}s...")

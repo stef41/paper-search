@@ -196,7 +196,7 @@ async def fetch_api_page(
             resp = await http.get(ARXIV_API_URL, params=params, timeout=60)
             if resp.status_code == 503:
                 try:
-                    wait = int(resp.headers.get("Retry-After", 30))
+                    wait = min(int(resp.headers.get("Retry-After", 30)), 120)
                 except (ValueError, TypeError):
                     wait = 30
                 logger.warning("arxiv_503_retry", wait=wait, attempt=attempt)

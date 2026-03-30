@@ -1158,9 +1158,10 @@ class GraphEngine:
 
         # Step 2: find recent papers exceeding the threshold
         # Combine: base_q (user filters) + recency + citation threshold
+        import math
         combined_filter = [
             {"range": {"submitted_date": {"gte": recency_cutoff}}},
-            {"range": {"citation_stats.total_citations": {"gte": int(threshold)}}},
+            {"range": {"citation_stats.total_citations": {"gte": math.ceil(threshold)}}},
         ]
         combined_q = {
             "bool": {
@@ -7267,10 +7268,7 @@ class GraphEngine:
 
         if sf.seed_arxiv_ids:
             seed_clause: dict = {"terms": {"arxiv_id": sf.seed_arxiv_ids[:10000]}}
-            if filters:
-                query = {"bool": {"must": [seed_clause], "filter": filters}}
-            else:
-                query = seed_clause
+            query = {"bool": {"must": [seed_clause] + musts, "filter": filters}} if (musts or filters) else seed_clause
         elif musts or filters:
             query = {"bool": {}}
             if musts:

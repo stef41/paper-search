@@ -32,7 +32,7 @@ async def fetch_s2(http: httpx.AsyncClient, arxiv_id: str) -> dict | None:
                 return None
             if r.status_code == 429:
                 try:
-                    wait = int(r.headers.get("Retry-After", 60))
+                    wait = min(int(r.headers.get("Retry-After", 60)), 120)
                 except (ValueError, TypeError):
                     wait = 60
                 print(f"    rate-limited, waiting {wait}s")

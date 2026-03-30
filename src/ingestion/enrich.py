@@ -56,7 +56,7 @@ async def fetch_s2_paper(
                 return False
             if resp.status_code == 429:
                 try:
-                    wait = int(resp.headers.get("Retry-After", 60))
+                    wait = min(int(resp.headers.get("Retry-After", 60)), 120)
                 except (ValueError, TypeError):
                     wait = 60
                 logger.warning("s2_rate_limited", wait=wait)
