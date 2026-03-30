@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     embedding_dim: int = 384
 
     # Security
+    trusted_proxies: str = ""
     cors_origins: str = "*"
     max_query_length: int = 2000
     max_regex_length: int = 200

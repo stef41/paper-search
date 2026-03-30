@@ -468,6 +468,7 @@ class GraphEngine:
         emb: list[float] | None = None,
     ) -> dict:
         """Execute an ES search, injecting KNN if semantic similarity is active."""
+        body = {**body}  # avoid mutating caller's dict
         knn = self._build_knn(sr, emb)
         if knn:
             # Apply the body's query as KNN filter so KNN results respect
@@ -6668,11 +6669,18 @@ class GraphEngine:
             return src.get(prop)
 
         _KNOWN_PROPERTIES = {
-            "citations", "date", "submitted_date", "primary_category",
-            "categories", "has_github", "page_count", "title", "authors",
-            "citation_stats", "abstract",
+            "arxiv_id", "title", "abstract", "authors",
+            "categories", "domains", "primary_category",
+            "submitted_date", "updated_date", "published_date", "date",
+            "doi", "journal_ref", "comments", "page_count",
+            "has_github", "github_urls", "pdf_url", "abstract_url",
+            "first_author", "first_author_h_index",
+            "citation_stats", "references_stats",
+            "reference_ids", "cited_by_ids",
+            "enrichment_source", "enriched_at",
+            "citations",
         }
-        _KNOWN_NESTED_PREFIXES = {"citation_stats"}
+        _KNOWN_NESTED_PREFIXES = {"citation_stats", "references_stats"}
 
         def _resolve_value(ref: str, assignment: dict[str, str | None]) -> Any:
             """Resolve either alias.property or literal value."""

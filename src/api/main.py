@@ -25,11 +25,10 @@ def _get_client_ip(request: Request) -> str:
     Without TRUSTED_PROXIES, X-Forwarded-For is ignored (safe default).
     """
     import ipaddress
-    import os
 
     raw_ip = request.client.host if request.client else "unknown"
 
-    trusted = os.environ.get("TRUSTED_PROXIES", "")
+    trusted = get_settings().trusted_proxies
     if not trusted:
         return raw_ip
 
@@ -107,10 +106,17 @@ async def _resolve_embeddings(
     for sq in sem_list:
         if not sq.text or not sq.text.strip():
             continue
-        emb = await get_cached_embedding(redis_client, sq.text, sq.level.value)
+        emb = None
+        try:
+            emb = await get_cached_embedding(redis_client, sq.text, sq.level.value)
+        except Exception:
+            pass  # Redis down — fall through to compute
         if emb is None:
             emb = await asyncio.get_running_loop().run_in_executor(None, encode_text, sq.text)
-            await cache_embedding(redis_client, sq.text, sq.level.value, emb)
+            try:
+                await cache_embedding(redis_client, sq.text, sq.level.value, emb)
+            except Exception:
+                pass  # cache write failure is non-fatal
         result.append((sq, emb))
     return result
 
