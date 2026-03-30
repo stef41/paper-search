@@ -841,7 +841,7 @@ class GraphEngine:
             ))
             for cat in cats:
                 cat_set.add(cat)
-                edges.append(GraphEdge(source=name, target=cat, relation="publishes_in"))
+                edges.append(GraphEdge(source=name, target=cat, relation="published_in"))
 
         for cat in cat_set:
             nodes.append(GraphNode(id=cat, label=cat, type="category"))
@@ -1611,9 +1611,9 @@ class GraphEngine:
                 properties={"paper_count": bucket["doc_count"]},
             ))
             if direction == "references":
-                edges.append(GraphEdge(source=seed, target=name, relation="cites", weight=bucket["doc_count"]))
+                edges.append(GraphEdge(source=seed, target=name, relation="influences", weight=bucket["doc_count"]))
             else:
-                edges.append(GraphEdge(source=name, target=seed, relation="cites", weight=bucket["doc_count"]))
+                edges.append(GraphEdge(source=name, target=seed, relation="influences", weight=bucket["doc_count"]))
 
         return GraphResponse(
             nodes=nodes, edges=edges,
@@ -2120,7 +2120,7 @@ class GraphEngine:
                     edges.append(GraphEdge(
                         source=papers[i][0].get("arxiv_id", ""),
                         target=papers[j][0].get("arxiv_id", ""),
-                        relation="shared_references",
+                        relation="bibliographic_coupling",
                         weight=shared,
                     ))
 
@@ -2213,7 +2213,7 @@ class GraphEngine:
                     edges.append(GraphEdge(
                         source=papers[i][0].get("arxiv_id", ""),
                         target=papers[j][0].get("arxiv_id", ""),
-                        relation="co_cited",
+                        relation="cocitation",
                         weight=shared,
                     ))
 
@@ -3887,7 +3887,7 @@ class GraphEngine:
                     }))
             edges_out.append(GraphEdge(
                 source=a, target=b,
-                relation="predicted_link",
+                relation="predicted",
                 weight=round(score, 6),
             ))
 
@@ -5811,7 +5811,7 @@ class GraphEngine:
                         "degree": len(undirected.get(pid, set())),
                     }))
             edges_out.append(GraphEdge(
-                source=a, target=b, relation="bridge",
+                source=a, target=b, relation="bridges",
                 weight=len(undirected.get(a, set())) + len(undirected.get(b, set())),
             ))
 
@@ -6230,7 +6230,7 @@ class GraphEngine:
                             id=cat, label=cat, type="category",
                             properties={"paper_count": len(cat_papers[cat])},
                         ))
-                edges_out.append(GraphEdge(source=a, target=b, relation="co_occur", weight=w))
+                edges_out.append(GraphEdge(source=a, target=b, relation="co_occurs", weight=w))
 
             return GraphResponse(
                 nodes=nodes, edges=edges_out,
