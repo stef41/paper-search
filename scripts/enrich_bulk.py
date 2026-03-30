@@ -158,8 +158,8 @@ async def main():
                     "references_stats": {
                         "total_references": len(refs),
                     },
-                    "reference_ids": ref_arxiv_ids,
-                    "cited_by_ids": cited_by_arxiv_ids,
+                    "reference_ids": list(dict.fromkeys(ref_arxiv_ids)),
+                    "cited_by_ids": list(dict.fromkeys(cited_by_arxiv_ids)),
                     "enrichment_source": "semantic_scholar",
                     "enriched_at": datetime.now(timezone.utc).isoformat(),
                 }

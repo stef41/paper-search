@@ -250,7 +250,7 @@ async def openalex_fetch_refs_batch(
             "references_stats": {"total_references": ref_count},
         }
         if ref_arxiv_ids:
-            doc["reference_ids"] = ref_arxiv_ids
+            doc["reference_ids"] = list(dict.fromkeys(ref_arxiv_ids))
 
         bulk_body.append(json.dumps({"update": {"_id": p["_id"]}}))
         bulk_body.append(json.dumps({"doc": doc}))
