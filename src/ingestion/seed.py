@@ -257,7 +257,8 @@ async def index_batch(
         return 0
 
     actions = [
-        {"_index": index, "_id": p["arxiv_id"], "_source": p}
+        {"_op_type": "update", "_index": index, "_id": p["arxiv_id"],
+         "doc": p, "doc_as_upsert": True}
         for p in papers
     ]
     success, errors = await async_bulk(client, actions, raise_on_error=False)

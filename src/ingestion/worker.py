@@ -76,9 +76,9 @@ def parse_oai_record(record_xml: Any) -> dict | None:
         return None
     categories_str = arx.findtext("arx:categories", "", OAI_NAMESPACES).strip()
     categories = categories_str.split() if categories_str else []
-    comments = arx.findtext("arx:comments", None, OAI_NAMESPACES)
-    doi = arx.findtext("arx:doi", None, OAI_NAMESPACES)
-    journal_ref = arx.findtext("arx:journal-ref", None, OAI_NAMESPACES)
+    comments = arx.findtext("arx:comments", None, OAI_NAMESPACES) or None
+    doi = arx.findtext("arx:doi", None, OAI_NAMESPACES) or None
+    journal_ref = arx.findtext("arx:journal-ref", None, OAI_NAMESPACES) or None
 
     # Parse dates — prefer version dates from arXivRaw metadata over OAI datestamp
     submitted_date = None
@@ -185,11 +185,15 @@ def parse_oai_record(record_xml: Any) -> dict | None:
     }
 
 
-@retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=2, min=4, max=60))
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=2, min=4, max=120))
 async def fetch_oai_page(
     client: httpx.AsyncClient, base_url: str, params: dict
 ) -> tuple[list[dict], str | None]:
     resp = await client.get(base_url, params=params, timeout=120)
+    if resp.status_code == 503:
+        retry_after = int(resp.headers.get("Retry-After", 120))
+        logger.warning("oai_503_retry", retry_after=retry_after)
+        await asyncio.sleep(min(retry_after, 300))
     resp.raise_for_status()
 
     parser = XMLParser(resolve_entities=False, no_network=True)
@@ -236,9 +240,11 @@ async def index_batch(
     actions = []
     for paper in papers:
         actions.append({
+            "_op_type": "update",
             "_index": index,
             "_id": paper["arxiv_id"],
-            "_source": paper,
+            "doc": paper,
+            "doc_as_upsert": True,
         })
 
     success, errors = await async_bulk(client, actions, raise_on_error=False)
@@ -403,7 +409,7 @@ async def run_ingestion_cycle(
 
     await save_state(
         es, source_key,
-        last_harvested_date=until_date,
+        last_harvested_date=current_date or until_date,
         resumption_token=None,
         total_harvested=total_indexed,
         status="completed",

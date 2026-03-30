@@ -71,4 +71,7 @@ async def save_state(
     if metadata:
         doc["metadata"] = metadata
 
-    await client.index(index=STATE_INDEX, id=source, document=doc)
+    await client.update(
+        index=STATE_INDEX, id=source,
+        body={"doc": doc, "doc_as_upsert": True},
+    )

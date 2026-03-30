@@ -335,7 +335,8 @@ def _add_embeddings(papers: list[dict]) -> None:
 async def _index_batch(client: AsyncElasticsearch, index: str, papers: list[dict]) -> int:
     """Bulk index papers."""
     actions = [
-        {"_index": index, "_id": p["arxiv_id"], "_source": p}
+        {"_op_type": "update", "_index": index, "_id": p["arxiv_id"],
+         "doc": p, "doc_as_upsert": True}
         for p in papers
     ]
     success, errors = await async_bulk(client, actions, raise_on_error=False)
