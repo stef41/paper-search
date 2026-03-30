@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import time
 from typing import Any
 
@@ -473,8 +474,11 @@ class SearchEngine:
             source.pop("abstract_embedding", None)
             source.pop("paragraph_embeddings", None)
 
+            raw_score = hit.get("_score")
+            if raw_score is not None and not math.isfinite(raw_score):
+                raw_score = None
             hits.append(SearchHit(
-                score=hit.get("_score"),
+                score=raw_score,
                 highlights=highlights if highlights else None,
                 **source,
             ))
@@ -518,8 +522,8 @@ class SearchEngine:
                 "max": aggs["max_date"].get("value_as_string"),
             },
             papers_with_github=aggs["github_count"]["doc_count"],
-            avg_page_count=aggs["avg_pages"]["value"],
-            avg_citations=aggs["avg_citations"]["value"],
+            avg_page_count=aggs["avg_pages"]["value"] if math.isfinite(aggs["avg_pages"]["value"] or 0) else None,
+            avg_citations=aggs["avg_citations"]["value"] if math.isfinite(aggs["avg_citations"]["value"] or 0) else None,
         )
 
     async def get_paper(self, arxiv_id: str) -> dict | None:
