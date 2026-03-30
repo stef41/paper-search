@@ -95,10 +95,17 @@ class DateRange(BaseModel):
 
     @model_validator(mode="after")
     def _check_range(self) -> "DateRange":
-        if self.gte is not None and self.lte is not None and self.gte > self.lte:
-            raise ValueError(
-                f"DateRange gte ({self.gte.date()}) must not exceed lte ({self.lte.date()})"
-            )
+        if self.gte is not None and self.lte is not None:
+            # Normalize tz-awareness to allow comparison
+            g, l = self.gte, self.lte
+            if g.tzinfo is not None and l.tzinfo is None:
+                l = l.replace(tzinfo=g.tzinfo)
+            elif l.tzinfo is not None and g.tzinfo is None:
+                g = g.replace(tzinfo=l.tzinfo)
+            if g > l:
+                raise ValueError(
+                    f"DateRange gte ({self.gte.date()}) must not exceed lte ({self.lte.date()})"
+                )
         return self
 
 
@@ -243,6 +250,16 @@ class SearchRequest(BaseModel):
         except re.error as exc:
             raise ValueError(f"Invalid regex: {exc}") from exc
         return v
+
+    @model_validator(mode="after")
+    def _check_ranges(self) -> "SearchRequest":
+        if self.min_h_index is not None and self.max_h_index is not None and self.min_h_index > self.max_h_index:
+            raise ValueError(f"min_h_index ({self.min_h_index}) cannot exceed max_h_index ({self.max_h_index})")
+        if self.min_citations is not None and self.max_citations is not None and self.min_citations > self.max_citations:
+            raise ValueError(f"min_citations ({self.min_citations}) cannot exceed max_citations ({self.max_citations})")
+        if self.min_page_count is not None and self.max_page_count is not None and self.min_page_count > self.max_page_count:
+            raise ValueError(f"min_page_count ({self.min_page_count}) cannot exceed max_page_count ({self.max_page_count})")
+        return self
 
 
 class SearchHit(BaseModel):
@@ -433,6 +450,12 @@ class PipelineStep(BaseModel):
         description="Min value for filter_property")
     filter_max: float | None = Field(default=None,
         description="Max value for filter_property")
+
+    @model_validator(mode="after")
+    def _check_filter_range(self) -> "PipelineStep":
+        if self.filter_min is not None and self.filter_max is not None and self.filter_min > self.filter_max:
+            raise ValueError(f"filter_min ({self.filter_min}) cannot exceed filter_max ({self.filter_max})")
+        return self
 
 
 class SubgraphFilter(BaseModel):
@@ -731,6 +754,16 @@ class GraphSearchRequest(BaseModel):
         except re.error as exc:
             raise ValueError(f"Invalid regex: {exc}") from exc
         return v
+
+    @model_validator(mode="after")
+    def _check_ranges(self) -> "GraphSearchRequest":
+        if self.min_h_index is not None and self.max_h_index is not None and self.min_h_index > self.max_h_index:
+            raise ValueError(f"min_h_index ({self.min_h_index}) cannot exceed max_h_index ({self.max_h_index})")
+        if self.min_citations is not None and self.max_citations is not None and self.min_citations > self.max_citations:
+            raise ValueError(f"min_citations ({self.min_citations}) cannot exceed max_citations ({self.max_citations})")
+        if self.min_page_count is not None and self.max_page_count is not None and self.min_page_count > self.max_page_count:
+            raise ValueError(f"min_page_count ({self.min_page_count}) cannot exceed max_page_count ({self.max_page_count})")
+        return self
 
     def to_search_request(self) -> SearchRequest:
         """Extract the search filter portion as a SearchRequest."""
