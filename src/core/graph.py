@@ -293,6 +293,9 @@ class GraphEngine:
         paper_nodes = [n for n in result.nodes if n.type == "paper"]
 
         for agg in aggregations:
+            # Skip duplicate aliases — keep the first occurrence
+            if agg.alias in agg_results:
+                continue
             fn = agg.function
             field = agg.field
 
@@ -7167,6 +7170,14 @@ class GraphEngine:
         final_result.metadata["total_steps"] = len(gq.pipeline_steps)
         final_result.metadata["pipeline_output_type"] = gq.pipeline_steps[-1].type
 
+        # Enforce the pipeline-level limit
+        if len(final_result.nodes) > final_limit:
+            final_result.nodes = final_result.nodes[:final_limit]
+            retained_ids = {n.id for n in final_result.nodes}
+            final_result.edges = [e for e in final_result.edges
+                                  if e.source in retained_ids and e.target in retained_ids]
+            final_result.total = len(final_result.nodes)
+
         return final_result
 
     # ══════════════════════════════════════════════════════════════════
@@ -7387,6 +7398,8 @@ class GraphEngine:
             projected_sr_kwargs["max_citations"] = sf.max_citations
         if sf.has_github is not None:
             projected_sr_kwargs["has_github"] = sf.has_github
+        if sf.exclude_categories:
+            projected_sr_kwargs["exclude_categories"] = sf.exclude_categories
         if sf.date_from or sf.date_to:
             from src.core.models import DateRange
             dt_kwargs: dict[str, Any] = {}
@@ -7635,6 +7648,12 @@ class GraphEngine:
                         edges_out.append(GraphEdge(source=nid, target=current_id, relation="cites"))
 
         # Filter out dangling edges (nodes that failed predicate or weren't fetched)
+        if collect_edges:
+            node_ids = {n.id for n in nodes_out}
+            edges_out = [e for e in edges_out if e.source in node_ids and e.target in node_ids]
+
+        # Enforce gq.limit on output (until_max_nodes may be larger)
+        nodes_out = nodes_out[:limit]
         if collect_edges:
             node_ids = {n.id for n in nodes_out}
             edges_out = [e for e in edges_out if e.source in node_ids and e.target in node_ids]
