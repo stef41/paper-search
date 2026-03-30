@@ -7733,6 +7733,24 @@ class GraphEngine:
             sub_results.append(sub_result)
 
         r1, r2 = sub_results
+
+        # Disambiguate synthetic IDs (community_0, component_0, …) that
+        # collide between sub-queries.  Paper/author/category IDs are
+        # globally meaningful so same-ID = same-entity; synthetic group
+        # IDs are positional and must be renamed to avoid false matches.
+        _SYNTHETIC_TYPES = {"community", "component", "scc"}
+        _id_set_1 = {n.id for n in r1.nodes}
+        _renames: dict[str, str] = {}
+        for n in r2.nodes:
+            if n.id in _id_set_1 and n.type in _SYNTHETIC_TYPES:
+                new_id = f"sq2_{n.id}"
+                _renames[n.id] = new_id
+                n.id = new_id
+        if _renames:
+            for e in r2.edges:
+                e.source = _renames.get(e.source, e.source)
+                e.target = _renames.get(e.target, e.target)
+
         ids1 = {n.id for n in r1.nodes}
         ids2 = {n.id for n in r2.nodes}
         result_limit = min(gq.limit or self.MAX_RESULTS, self.MAX_RESULTS)
