@@ -61,7 +61,7 @@ def _safe_int(val: Any, default: int = 0) -> int:
     """Convert a value to int, returning *default* on failure."""
     try:
         return int(val)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
@@ -3408,13 +3408,13 @@ class GraphEngine:
                 if w != s:
                     betweenness[w] += delta[w]
 
-        # Normalize
+        # Normalize (undirected: divide by 2 to correct double-counting)
         if N > 2:
-            scale = 1.0 / ((N - 1) * (N - 2))  # undirected normalization
+            scale = 1.0 / ((N - 1) * (N - 2))
             if len(sample) < N:
                 scale *= N / len(sample)  # Approximate scaling
             for n in node_list:
-                betweenness[n] *= scale
+                betweenness[n] = betweenness[n] * scale / 2.0
 
         # Sort and return top nodes
         sorted_bc = sorted(betweenness.items(), key=lambda x: -x[1])[:limit]
