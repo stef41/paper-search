@@ -38,7 +38,7 @@ async def backfill_embeddings(
         },
         "size": batch_size,
         "_source": ["arxiv_id", "title", "abstract"],
-        "sort": [{"_doc": "asc"}],
+        "sort": [{"arxiv_id": "asc"}],
     }
 
     total = 0
@@ -59,40 +59,43 @@ async def backfill_embeddings(
         if not hits:
             break
 
-        titles = [h["_source"].get("title") or "" for h in hits]
-        abstracts = [h["_source"].get("abstract") or "" for h in hits]
-        ids = [h["_source"]["arxiv_id"] for h in hits]
+        try:
+            titles = [h["_source"].get("title") or "" for h in hits]
+            abstracts = [h["_source"].get("abstract") or "" for h in hits]
+            ids = [h["_id"] for h in hits]
 
-        title_embs = encode_texts(titles, batch_size=64)
-        abstract_embs = encode_texts(abstracts, batch_size=64)
+            title_embs = encode_texts(titles, batch_size=64)
+            abstract_embs = encode_texts(abstracts, batch_size=64)
 
-        if len(title_embs) != len(titles) or len(abstract_embs) != len(abstracts):
-            logger.error(
-                "embed_length_mismatch",
-                titles=len(titles),
-                title_embs=len(title_embs),
-                abstracts=len(abstracts),
-                abstract_embs=len(abstract_embs),
-            )
-            search_after = hits[-1]["sort"]
-            continue
+            if len(title_embs) != len(titles) or len(abstract_embs) != len(abstracts):
+                logger.error(
+                    "embed_length_mismatch",
+                    titles=len(titles),
+                    title_embs=len(title_embs),
+                    abstracts=len(abstracts),
+                    abstract_embs=len(abstract_embs),
+                )
+                search_after = hits[-1]["sort"]
+                continue
 
-        # Bulk update
-        ops = []
-        for i, aid in enumerate(ids):
-            ops.append({"update": {"_index": settings.es_index, "_id": aid}})
-            doc = {}
-            if i < len(title_embs):
-                doc["title_embedding"] = title_embs[i]
-            if i < len(abstract_embs):
-                doc["abstract_embedding"] = abstract_embs[i]
-            ops.append({"doc": doc})
+            # Bulk update
+            ops = []
+            for i, aid in enumerate(ids):
+                ops.append({"update": {"_index": settings.es_index, "_id": aid}})
+                doc = {}
+                if i < len(title_embs):
+                    doc["title_embedding"] = title_embs[i]
+                if i < len(abstract_embs):
+                    doc["abstract_embedding"] = abstract_embs[i]
+                ops.append({"doc": doc})
 
-        if ops:
-            bulk_resp = await es.bulk(body=ops)
-            if bulk_resp.get("errors"):
-                failed = sum(1 for item in bulk_resp.get("items", []) if "error" in item.get("update", {}))
-                logger.warning("bulk_embed_errors", failed=failed, batch=len(ids))
+            if ops:
+                bulk_resp = await es.bulk(body=ops)
+                if bulk_resp.get("errors"):
+                    failed = sum(1 for item in bulk_resp.get("items", []) if "error" in item.get("update", {}))
+                    logger.warning("bulk_embed_errors", failed=failed, batch=len(ids))
+        except Exception as e:
+            logger.error("embed_batch_failed", error=str(e), batch=len(hits))
 
         total += len(hits)
         elapsed = time.monotonic() - start_time

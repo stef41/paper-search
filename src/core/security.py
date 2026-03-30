@@ -91,10 +91,23 @@ def validate_search_request(request: Any) -> None:
     settings = get_settings()
 
     # Strip null bytes from all text query fields
-    for text_field in ("query", "title_query", "abstract_query", "fuzzy"):
+    for text_field in ("query", "title_query", "abstract_query", "fuzzy",
+                        "author", "first_author", "primary_category"):
         val = getattr(request, text_field, None)
         if val:
             setattr(request, text_field, val.replace("\x00", ""))
+
+    # Strip null bytes from list-of-string fields
+    for list_field in ("categories", "exclude_categories"):
+        vals = getattr(request, list_field, None)
+        if vals:
+            setattr(request, list_field, [v.replace("\x00", "") for v in vals])
+
+    # Strip null bytes from regex fields (before validation)
+    for regex_field in ("title_regex", "abstract_regex", "author_regex"):
+        val = getattr(request, regex_field, None)
+        if val:
+            setattr(request, regex_field, val.replace("\x00", ""))
 
     if request.query and len(request.query) > settings.max_query_length:
         raise HTTPException(
