@@ -2393,8 +2393,8 @@ class GraphEngine:
                                  metadata={"error": "source or target paper not found in index"})
 
         for depth in range(max_depth):
-            # Expand the smaller frontier
-            if len(forward_frontier) <= len(backward_frontier):
+            # Expand the smaller frontier (skip empty ones)
+            if forward_frontier and (not backward_frontier or len(forward_frontier) <= len(backward_frontier)):
                 papers = await _fetch_papers(list(forward_frontier))
                 next_forward: set[str] = set()
                 candidates: list[str] = []
