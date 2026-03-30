@@ -711,6 +711,17 @@ class GraphSearchRequest(BaseModel):
         import re as _re
         if _re.search(r'\([^)]*[+*][^)]*\)[+*]', v):
             raise ValueError("Potentially dangerous regex pattern (nested quantifiers)")
+        # Block Python regex features unsupported by ES/Lucene regex engine
+        unsupported = _re.compile(
+            r'\\[dDwWsSbBAZG]'  # shorthand character classes
+            r'|\(\?[=!<:]'      # lookahead, lookbehind, non-capturing groups
+            r'|\(\?P'           # named groups
+        )
+        if unsupported.search(v):
+            raise ValueError(
+                "Regex uses Python-only features not supported by Elasticsearch. "
+                "Use character classes like [0-9] instead of \\d, [a-zA-Z] instead of \\w"
+            )
         try:
             re.compile(v)
         except re.error as exc:

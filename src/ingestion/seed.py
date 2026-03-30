@@ -263,7 +263,8 @@ async def index_batch(
     ]
     success, errors = await async_bulk(client, actions, raise_on_error=False)
     if errors:
-        logger.warning("bulk_index_errors", count=len(errors))
+        sample = errors[:3]
+        logger.warning("bulk_index_errors", count=len(errors), sample=sample)
     return success
 
 

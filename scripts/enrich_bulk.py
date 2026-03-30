@@ -182,7 +182,9 @@ async def main():
                 else:
                     errors = br.json().get("errors", False)
                     if errors:
-                        print(f"  ES bulk had errors")
+                        errs = sum(1 for it in br.json().get("items", []) if "error" in it.get("update", {}))
+                        print(f"  ES bulk had {errs} errors")
+                        batch_enriched -= errs
 
             total_enriched += batch_enriched
             print(f"  Batch done: {batch_enriched} enriched, {len(batch) - batch_enriched} skipped")
