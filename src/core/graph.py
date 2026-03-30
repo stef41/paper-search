@@ -548,6 +548,10 @@ class GraphEngine:
             entries = knn if isinstance(knn, list) else [knn]
             for entry in entries:
                 entry["filter"] = query
+                # Override k to provide enough KNN candidates for aggregations
+                # (default k from SearchRequest pagination is too low).
+                entry["k"] = min(max(200, entry.get("k", 20)), 500)
+                entry["num_candidates"] = min(entry["k"] * 10, 5000)
             body["knn"] = knn
         body["timeout"] = "10s"
         return await self.client.options(request_timeout=15).search(
@@ -1252,6 +1256,8 @@ class GraphEngine:
         if gq.seed_arxiv_id:
             # Single paper seed
             seed_query = {"term": {"arxiv_id": gq.seed_arxiv_id}}
+        elif gq.seed_arxiv_ids:
+            seed_query = {"terms": {"arxiv_id": gq.seed_arxiv_ids[:10000]}}
         else:
             base = self._base_query(sr, emb)
             # Require seeds to actually have citation link data
@@ -3159,6 +3165,7 @@ class GraphEngine:
             "citations": F.extract_citations(src),
             "submitted_date": src.get(F.node_timestamp),
             "authors": F.extract_authors(src),
+            "has_github": src.get("has_github"),
         }
         if extra_props:
             props.update(extra_props)

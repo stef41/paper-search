@@ -225,6 +225,14 @@ def add_embeddings(papers: list[dict]) -> list[dict]:
     title_embs = encode_texts(titles)
     abstract_embs = encode_texts(abstracts)
 
+    if len(title_embs) != len(papers) or len(abstract_embs) != len(papers):
+        logger.error(
+            "embed_length_mismatch",
+            papers=len(papers),
+            title_embs=len(title_embs),
+            abstract_embs=len(abstract_embs),
+        )
+
     for i, paper in enumerate(papers):
         if i < len(title_embs):
             paper["title_embedding"] = title_embs[i]
