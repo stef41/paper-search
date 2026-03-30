@@ -517,7 +517,7 @@ class GraphEngine:
             knn = knn[0]
         knn["k"] = min(max_candidates, 5000)
         knn["num_candidates"] = min(max_candidates * 5, 10000)
-        body: dict[str, Any] = {"knn": knn, "size": max_candidates, "_source": ["arxiv_id"]}
+        body: dict[str, Any] = {"knn": knn, "size": min(max_candidates, 10000), "_source": ["arxiv_id"]}
         # Also apply text/filter constraints if any
         base_q = self._base_query(sr, emb)
         if base_q != {"match_all": {}}:
@@ -6613,7 +6613,7 @@ class GraphEngine:
             if not src:
                 return False
             f = pnode.filters
-            if "categories" in f:
+            if "categories" in f and isinstance(f["categories"], list):
                 if not set(f["categories"]) & set(src.get("categories") or []):
                     return False
             if "primary_category" in f:
@@ -6962,20 +6962,21 @@ class GraphEngine:
         musts.append(base)
 
         f = pnode.filters
-        if "categories" in f:
-            filters.append({"terms": {"categories": f["categories"]}})
+        if "categories" in f and isinstance(f["categories"], list):
+            filters.append({"terms": {"categories": [str(c) for c in f["categories"]]}})
         if "primary_category" in f:
-            filters.append({"term": {"primary_category": f["primary_category"]}})
+            filters.append({"term": {"primary_category": str(f["primary_category"])}})
         if "min_citations" in f:
-            filters.append({"range": {"citation_stats.total_citations": {"gte": f["min_citations"]}}})
+            filters.append({"range": {"citation_stats.total_citations": {"gte": _safe_int(f["min_citations"])}}})
         if "max_citations" in f:
-            filters.append({"range": {"citation_stats.total_citations": {"lte": f["max_citations"]}}})
+            filters.append({"range": {"citation_stats.total_citations": {"lte": _safe_int(f["max_citations"])}}})
         if "has_github" in f:
-            filters.append({"term": {"has_github": f["has_github"]}})
+            filters.append({"term": {"has_github": bool(f["has_github"])}})
         if "date_from" in f:
-            filters.append({"range": {"submitted_date": {"gte": f["date_from"]}}})
+            filters.append({"range": {"submitted_date": {"gte": str(f["date_from"])}}})
         if "date_to" in f:
-            filters.append({"range": {"submitted_date": {"lte": f["date_to"]}}})
+            filters.append({"range": {"submitted_date": {"lte": str(f["date_to"])}}})
+
 
         if filters:
             return {"bool": {"must": musts, "filter": filters}}
