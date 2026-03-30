@@ -117,6 +117,7 @@ class TestCitationFilters:
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert len(data["hits"]) >= 1
         for hit in data["hits"]:
             assert hit["citation_stats"]["total_citations"] <= 50
 
@@ -129,6 +130,7 @@ class TestCitationFilters:
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert len(data["hits"]) >= 1
         for hit in data["hits"]:
             c = hit["citation_stats"]["total_citations"]
             assert 10 <= c <= 200
@@ -212,6 +214,7 @@ class TestCategoryFilters:
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert len(data["hits"]) >= 1
         for hit in data["hits"]:
             assert "cs.CV" not in hit["categories"]
 
@@ -225,9 +228,8 @@ class TestCategoryFilters:
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] >= 1
-
-
-class TestDateFilters:
+        for hit in data["hits"]:
+            assert "cs.LG" in hit["categories"] or "cs.CL" in hit["categories"]
     """Test date-based filtering."""
 
     @pytest.mark.integration
@@ -253,6 +255,8 @@ class TestDateFilters:
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] >= 1
+        for hit in data["hits"]:
+            assert hit["submitted_date"] <= "2024-01-01"
 
     @pytest.mark.integration
     def test_submitted_date_range(self, client):
@@ -269,6 +273,8 @@ class TestDateFilters:
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] >= 1
+        for hit in data["hits"]:
+            assert "2024-01-01" <= hit["submitted_date"] <= "2024-03-01"
 
     @pytest.mark.integration
     def test_empty_date_range(self, client):
@@ -295,6 +301,7 @@ class TestDateFilters:
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert len(data["hits"]) >= 1
         for hit in data["hits"]:
             assert hit.get("updated_date", "") >= "2024-01-01"
 
@@ -363,6 +370,7 @@ class TestMetadataFilters:
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert len(data["hits"]) >= 1
         for hit in data["hits"]:
             assert 10 <= hit["page_count"] <= 30
 
@@ -388,6 +396,7 @@ class TestMetadataFilters:
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert len(data["hits"]) >= 1
         for hit in data["hits"]:
             assert hit["doi"] is None
 
