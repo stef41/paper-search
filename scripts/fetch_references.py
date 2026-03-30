@@ -53,8 +53,9 @@ def arxiv_to_doi(arxiv_id: str) -> str:
 
 
 def doi_to_arxiv(doi: str) -> str | None:
-    if "10.48550/arxiv." in doi:
-        return doi.split("10.48550/arxiv.")[1]
+    doi_lower = doi.lower()
+    if "10.48550/arxiv." in doi_lower:
+        return doi_lower.split("10.48550/arxiv.")[1]
     return None
 
 
@@ -114,12 +115,18 @@ async def resolve_openalex_ids(
             r = None
             for attempt in range(3):
                 r = await http.get(f"{OPENALEX_API}/works", params=params)
+                if r.status_code == 200:
+                    break
                 if r.status_code == 429:
-                    wait = min(int(r.headers.get("Retry-After", 60)), 120)
+                    try:
+                        wait = min(int(r.headers.get("Retry-After", 60)), 120)
+                    except (ValueError, TypeError):
+                        wait = 60
                     print(f"    Rate limited (attempt {attempt+1}/3), waiting {wait}s...")
                     await asyncio.sleep(wait)
                 else:
-                    break
+                    print(f"    OpenAlex ref resolve error {r.status_code} (attempt {attempt+1}/3)")
+                    await asyncio.sleep(5)
 
             if r is None or r.status_code != 200:
                 print(f"    OpenAlex resolve failed (status {r.status_code if r else 'N/A'}), skipping batch of {len(batch)}")
@@ -236,7 +243,10 @@ async def process_batch(
             if r.status_code == 200:
                 break
             if r.status_code == 429:
-                wait = min(int(r.headers.get("Retry-After", 60)), 120)
+                try:
+                    wait = min(int(r.headers.get("Retry-After", 60)), 120)
+                except (ValueError, TypeError):
+                    wait = 60
                 print(f"    Rate limited, waiting {wait}s...")
                 await asyncio.sleep(wait)
                 continue

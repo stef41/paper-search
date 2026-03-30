@@ -66,7 +66,7 @@ async def scan_references(http: httpx.AsyncClient) -> dict[str, list[str]]:
                 total_papers += 1
                 total_refs += len(refs)
 
-                for ref_id in refs:
+                for ref_id in set(refs):
                     cited_by[ref_id].append(citing_id)
 
             # Get next scroll page

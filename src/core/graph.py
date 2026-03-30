@@ -6428,9 +6428,12 @@ class GraphEngine:
             return GraphResponse(nodes=[], edges=[], total=0, took_ms=0,
                                  metadata={"error": "max 5 pattern nodes allowed"})
 
-        _FIELDS = ["arxiv_id", "title", "categories", "primary_category",
-                    "authors", "submitted_date", "citation_stats",
-                    "reference_ids", "cited_by_ids", "has_github", "page_count"]
+        _FIELDS = ["arxiv_id", "title", "abstract", "categories", "primary_category",
+                    "authors", "submitted_date", "updated_date", "citation_stats",
+                    "references_stats", "reference_ids", "cited_by_ids",
+                    "has_github", "github_urls", "page_count",
+                    "doi", "journal_ref", "comments", "domains",
+                    "first_author", "first_author_h_index"]
 
         # ── Step 1: Find candidates for the anchor node (first pattern node) ──
         anchor = p_nodes[0]
@@ -6884,6 +6887,10 @@ class GraphEngine:
                 src_id = match.get(pe.source)
                 tgt_id = match.get(pe.target)
                 if src_id and tgt_id:
+                    # For optional edges, verify the relationship actually exists
+                    if pe.optional:
+                        if tgt_id not in reachable(src_id, pe.relation, pe.min_hops, pe.max_hops):
+                            continue
                     ek = (src_id, tgt_id, pe.relation)
                     if ek not in seen_edges:
                         seen_edges.add(ek)
@@ -7011,6 +7018,10 @@ class GraphEngine:
                                              "step_results": step_results,
                                          })
                 step_params["seed_arxiv_ids"] = current_paper_ids[:2000]
+                # Also set singular seed for handlers that require it
+                # (traverse, shortest_path, random_walk, etc.)
+                if "seed_arxiv_id" not in step_params:
+                    step_params["seed_arxiv_id"] = current_paper_ids[0]
 
             try:
                 step_gq = GraphQuery(**step_params)

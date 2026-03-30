@@ -247,8 +247,7 @@ async def main():
                 continue
             citations = [c for _, c in papers]
             h = compute_h_index(citations)
-            if h > 0:
-                h_indices[name] = h
+            h_indices[name] = h
 
         # Stats
         h_values = list(h_indices.values())
