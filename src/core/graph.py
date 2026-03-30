@@ -5478,8 +5478,12 @@ class GraphEngine:
         radius = min((eccentricity[v] for v in lc_nodes), default=0)
         center = [v for v in lc_nodes if eccentricity[v] == radius]
 
-        # Sort by eccentricity (center nodes first)
-        ranked = sorted(node_list, key=lambda v: (eccentricity[v], -reachable_count[v]))[:limit]
+        # Sort by eccentricity (center nodes first, largest component prioritized)
+        ranked = sorted(node_list, key=lambda v: (
+            0 if v in lc_nodes else 1,
+            eccentricity[v],
+            -reachable_count[v],
+        ))[:limit]
 
         nodes: list[GraphNode] = []
         edges_out: list[GraphEdge] = []
