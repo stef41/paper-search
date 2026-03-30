@@ -125,7 +125,9 @@ async def resolve_openalex_ids(
 
         try:
             r = await http.get(f"{OPENALEX_API}/works", params=params)
-            if r.status_code == 429:
+            for _retry in range(3):
+                if r.status_code != 429:
+                    break
                 try:
                     wait = min(int(r.headers.get("Retry-After", 60)), 120)
                 except (ValueError, TypeError):
@@ -133,6 +135,9 @@ async def resolve_openalex_ids(
                 print(f"    Rate limited, waiting {wait}s...")
                 await asyncio.sleep(wait)
                 r = await http.get(f"{OPENALEX_API}/works", params=params)
+
+            if r.status_code != 200:
+                print(f"    OpenAlex returned {r.status_code} for batch of {len(batch)} — skipping")
 
             if r.status_code == 200:
                 found_ids = set()
@@ -238,7 +243,8 @@ async def openalex_fetch_refs_batch(
             "enriched_at": now_str,
             "references_stats": {"total_references": ref_count},
         }
-        doc["reference_ids"] = ref_arxiv_ids
+        if ref_arxiv_ids:
+            doc["reference_ids"] = ref_arxiv_ids
 
         bulk_body.append(json.dumps({"update": {"_id": p["_id"]}}))
         bulk_body.append(json.dumps({"doc": doc}))
