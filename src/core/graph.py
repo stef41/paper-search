@@ -4470,9 +4470,10 @@ class GraphEngine:
         node_list = list(paper_data.keys())
         N = len(node_list)
 
-        # Propagation probability per edge (based on in-degree)
-        # p(u → v) = 1 / in_degree(v)
-        in_deg: dict[str, int] = {n: max(len(in_edges.get(n, set())), 1) for n in node_list}
+        # Propagation probability per edge (based on influence in-degree).
+        # Influence flows cited→citing, so in-degree in the influence graph
+        # = number of papers v cites = len(out_edges[v]).
+        influence_in_deg: dict[str, int] = {n: max(len(out_edges.get(n, set())), 1) for n in node_list}
 
         def simulate_spread(seeds: set[str]) -> int:
             """Run one IC simulation from seeds, return total activated."""
@@ -4484,7 +4485,7 @@ class GraphEngine:
                     # u tries to activate its cited_by neighbors (u influences those who cite it)
                     for v in in_edges.get(u, set()):
                         if v not in active:
-                            p = 1.0 / in_deg[v]
+                            p = 1.0 / influence_in_deg[v]
                             if random.random() < p:
                                 active.add(v)
                                 next_frontier.append(v)
@@ -4552,7 +4553,7 @@ class GraphEngine:
                 for u in frontier:
                     for v in in_edges.get(u, set()):
                         if v not in active:
-                            p = 1.0 / in_deg[v]
+                            p = 1.0 / influence_in_deg[v]
                             if random.random() < p:
                                 active.add(v)
                                 next_frontier.append(v)
@@ -6555,12 +6556,19 @@ class GraphEngine:
             result: set[str] = set()
             current_frontier = {src_id}
             visited = {src_id}
+            early_visited: set[str] = set()  # nodes found at hop < min_h
             for hop in range(1, max_h + 1):
                 next_frontier: set[str] = set()
                 for n in current_frontier:
-                    next_frontier |= get_neighbors(n, relation)
+                    for nbr in get_neighbors(n, relation):
+                        if nbr not in visited:
+                            next_frontier.add(nbr)
+                        elif hop >= min_h and nbr in early_visited:
+                            result.add(nbr)  # also reachable via longer path
                 next_frontier -= visited
                 visited |= next_frontier
+                if hop < min_h:
+                    early_visited |= next_frontier
                 if hop >= min_h:
                     result |= next_frontier
                 current_frontier = next_frontier
@@ -6664,6 +6672,7 @@ class GraphEngine:
             "categories", "has_github", "page_count", "title", "authors",
             "citation_stats", "abstract",
         }
+        _KNOWN_NESTED_PREFIXES = {"citation_stats"}
 
         def _resolve_value(ref: str, assignment: dict[str, str | None]) -> Any:
             """Resolve either alias.property or literal value."""
@@ -6673,7 +6682,8 @@ class GraphEngine:
                 # pattern node AND the property is recognized.  This avoids
                 # treating dotted literals like "cs.AI" as alias references.
                 if parts[0] in alias_order and (
-                    parts[1] in _KNOWN_PROPERTIES or "." in parts[1]
+                    parts[1] in _KNOWN_PROPERTIES
+                    or parts[1].split(".")[0] in _KNOWN_NESTED_PREFIXES
                 ):
                     return _resolve_property(parts[0], parts[1], assignment)
             # Try as literal
@@ -6700,7 +6710,8 @@ class GraphEngine:
                     if "." in ref:
                         alias_part, prop_part = ref.split(".", 1)
                         if (alias_part in alias_order
-                                and (prop_part in _KNOWN_PROPERTIES or "." in prop_part)
+                                and (prop_part in _KNOWN_PROPERTIES
+                                     or prop_part.split(".")[0] in _KNOWN_NESTED_PREFIXES)
                                 and alias_part not in assignment):
                             skip = True
                             break
@@ -7471,6 +7482,7 @@ class GraphEngine:
         visited: set[str] = set()
         nodes_out: list[GraphNode] = []
         edges_out: list[GraphEdge] = []
+        seen_edges: set[tuple[str, str]] = set()
 
         queue: deque[tuple[str, int]] = deque()
         queue.append((source_id, 0))
@@ -7573,10 +7585,14 @@ class GraphEngine:
             # Record edges separately — a node can appear in both outgoing and incoming
             if collect_edges:
                 for nid in outgoing_ids:
-                    if nid in visited or len(nodes_out) < until_max_nodes:
+                    ek = (current_id, nid)
+                    if nid in visited and ek not in seen_edges:
+                        seen_edges.add(ek)
                         edges_out.append(GraphEdge(source=current_id, target=nid, relation="cites"))
                 for nid in incoming_ids:
-                    if nid in visited or len(nodes_out) < until_max_nodes:
+                    ek = (nid, current_id)
+                    if nid in visited and ek not in seen_edges:
+                        seen_edges.add(ek)
                         edges_out.append(GraphEdge(source=nid, target=current_id, relation="cites"))
 
         # Filter out dangling edges (nodes that failed predicate or weren't fetched)

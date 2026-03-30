@@ -133,57 +133,58 @@ async def harvest_full(start_year: int = 1986, resume: bool = False):
 
     total_harvested = 0
 
-    for year in range(start_year, current_year + 1):
-        year_key = str(year)
+    try:
+        for year in range(start_year, current_year + 1):
+            year_key = str(year)
 
-        # Skip completed years
-        if year_key in progress and progress[year_key].get("status") == "completed":
-            count = progress[year_key].get("count", 0)
-            total_harvested += count
-            print(f"  ⏭  {year}: already completed ({count:,} papers)")
-            continue
+            # Skip completed years
+            if year_key in progress and progress[year_key].get("status") == "completed":
+                count = progress[year_key].get("count", 0)
+                total_harvested += count
+                print(f"  ⏭  {year}: already completed ({count:,} papers)")
+                continue
 
-        from_date = f"{year}-01-01"
-        until_date = f"{year}-12-31" if year < current_year else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            from_date = f"{year}-01-01"
+            until_date = f"{year}-12-31" if year < current_year else datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-        print(f"\n  📥 {year}: harvesting {from_date} → {until_date} ...")
-        year_start = time.monotonic()
+            print(f"\n  📥 {year}: harvesting {from_date} → {until_date} ...")
+            year_start = time.monotonic()
 
-        try:
-            count = await run_ingestion_cycle(
-                from_date=from_date,
-                until_date=until_date,
-                skip_embeddings=True,
-            )
-            elapsed = time.monotonic() - year_start
+            try:
+                count = await run_ingestion_cycle(
+                    from_date=from_date,
+                    until_date=until_date,
+                    skip_embeddings=True,
+                )
+                elapsed = time.monotonic() - year_start
 
-            total_harvested += count
-            current_total = await get_current_count()
+                total_harvested += count
+                current_total = await get_current_count()
 
-            progress[year_key] = {
-                "status": "completed",
-                "count": count,
-                "elapsed_s": int(elapsed),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            save_progress(progress)
+                progress[year_key] = {
+                    "status": "completed",
+                    "count": count,
+                    "elapsed_s": int(elapsed),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                save_progress(progress)
 
-            print(f"  ✓  {year}: {count:,} papers in {elapsed:.0f}s | DB total: {current_total:,}")
+                print(f"  ✓  {year}: {count:,} papers in {elapsed:.0f}s | DB total: {current_total:,}")
 
-        except Exception as e:
-            elapsed = time.monotonic() - year_start
-            progress[year_key] = {
-                "status": "failed",
-                "error": str(e),
-                "elapsed_s": int(elapsed),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            save_progress(progress)
-            print(f"  ✗  {year}: FAILED after {elapsed:.0f}s — {e}")
-            print(f"     Run with --resume to retry")
-
-    # Restore ES settings
-    await restore_es_settings()
+            except Exception as e:
+                elapsed = time.monotonic() - year_start
+                progress[year_key] = {
+                    "status": "failed",
+                    "error": str(e),
+                    "elapsed_s": int(elapsed),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                save_progress(progress)
+                print(f"  ✗  {year}: FAILED after {elapsed:.0f}s — {e}")
+                print(f"     Run with --resume to retry")
+    finally:
+        # Restore ES settings (even on Ctrl+C / crash)
+        await restore_es_settings()
 
     # Final stats
     final_count = await get_current_count()

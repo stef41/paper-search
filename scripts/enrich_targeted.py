@@ -149,15 +149,18 @@ async def main():
 
                 doc_id = doc_ids[arxiv_id]
                 bulk_body.append(json.dumps({"update": {"_id": doc_id}}))
-                update = {"doc": {
+                first_h = authors[0].get("hIndex") if authors and isinstance(authors[0], dict) else None
+                doc_update: dict = {
                     "citation_stats": {"total_citations": cites, "top_citing_categories": top_citing, "median_h_index_citing_authors": median_h},
                     "references_stats": {"total_references": len(refs)},
-                    "first_author_h_index": authors[0].get("hIndex") if authors and isinstance(authors[0], dict) else None,
                     "reference_ids": ref_ids,
                     "cited_by_ids": cited_by_ids,
                     "enrichment_source": "semantic_scholar",
                     "enriched_at": datetime.now(timezone.utc).isoformat(),
-                }}
+                }
+                if first_h is not None:
+                    doc_update["first_author_h_index"] = first_h
+                update = {"doc": doc_update}
                 bulk_body.append(json.dumps(update))
                 batch_enriched += 1
                 if ref_ids:

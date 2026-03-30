@@ -51,7 +51,14 @@ async def _checked_bulk(http: httpx.AsyncClient, bulk_body: list[str], **kwargs)
         headers={"Content-Type": "application/x-ndjson"},
         **kwargs,
     )
-    result = resp.json()
+    if resp.status_code >= 400:
+        print(f"    WARNING: bulk request returned HTTP {resp.status_code}")
+        return
+    try:
+        result = resp.json()
+    except Exception:
+        print(f"    WARNING: bulk response not JSON (HTTP {resp.status_code})")
+        return
     if result.get("errors"):
         failed = sum(1 for item in result.get("items", [])
                      if "error" in (item.get("update") or item.get("index") or {}))

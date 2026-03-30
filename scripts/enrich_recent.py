@@ -12,7 +12,7 @@ import httpx
 import statistics
 
 S2_API = "https://api.semanticscholar.org/graph/v1"
-S2_FIELDS = "citationCount,influentialCitationCount,citations.fieldsOfStudy,citations.citationCount,citations.authors.hIndex,authors.hIndex,authors.citationCount,references"
+S2_FIELDS = "citationCount,influentialCitationCount,citations.externalIds,citations.fieldsOfStudy,citations.citationCount,citations.authors.hIndex,authors.hIndex,authors.citationCount,references.externalIds,externalIds"
 
 ES_URL = "http://localhost:9200"
 INDEX = "arxiv_papers"
@@ -65,13 +65,16 @@ def compute_enrichment(s2: dict) -> dict:
 
     refs = s2.get("references") or []
 
-    return {
+    first_h = authors[0].get("hIndex") if authors and isinstance(authors[0], dict) else None
+    result: dict = {
         "citation_stats.total_citations": cites,
         "citation_stats.top_citing_categories": top_citing,
         "citation_stats.median_h_index_citing_authors": statistics.median(citing_h_indices) if citing_h_indices else None,
         "references_stats.total_references": len(refs),
-        "first_author_h_index": authors[0].get("hIndex") if authors and isinstance(authors[0], dict) else None,
     }
+    if first_h is not None:
+        result["first_author_h_index"] = first_h
+    return result
 
 
 async def main():

@@ -57,36 +57,37 @@ async def scan_references(http: httpx.AsyncClient) -> dict[str, list[str]]:
     scroll_id = data.get("_scroll_id")
     hits = data["hits"]["hits"]
 
-    while hits:
-        for h in hits:
-            src = h["_source"]
-            citing_id = src["arxiv_id"]
-            refs = src.get("reference_ids") or []
-            total_papers += 1
-            total_refs += len(refs)
+    try:
+        while hits:
+            for h in hits:
+                src = h["_source"]
+                citing_id = src["arxiv_id"]
+                refs = src.get("reference_ids") or []
+                total_papers += 1
+                total_refs += len(refs)
 
-            for ref_id in refs:
-                cited_by[ref_id].append(citing_id)
+                for ref_id in refs:
+                    cited_by[ref_id].append(citing_id)
 
-        # Get next scroll page
-        r = await http.post(
-            f"{ES_URL}/_search/scroll",
-            json={"scroll": "5m", "scroll_id": scroll_id},
-        )
-        data = r.json()
-        if r.status_code != 200 or "hits" not in data:
-            print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
-            break
-        scroll_id = data.get("_scroll_id")
-        hits = data["hits"]["hits"]
-
-    # Clear scroll
-    if scroll_id:
-        await http.request(
-            "DELETE",
-            f"{ES_URL}/_search/scroll",
-            json={"scroll_id": scroll_id},
-        )
+            # Get next scroll page
+            r = await http.post(
+                f"{ES_URL}/_search/scroll",
+                json={"scroll": "5m", "scroll_id": scroll_id},
+            )
+            data = r.json()
+            if r.status_code != 200 or "hits" not in data:
+                print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
+                break
+            scroll_id = data.get("_scroll_id")
+            hits = data["hits"]["hits"]
+    finally:
+        # Clear scroll
+        if scroll_id:
+            await http.request(
+                "DELETE",
+                f"{ES_URL}/_search/scroll",
+                json={"scroll_id": scroll_id},
+            )
 
     print(f"Scanned {total_papers} papers with {total_refs} total references")
     print(f"Built citation map for {len(cited_by)} unique cited papers")

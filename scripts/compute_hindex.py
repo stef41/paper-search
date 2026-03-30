@@ -62,35 +62,36 @@ async def scan_papers_with_citations(http: httpx.AsyncClient) -> dict[str, list[
     scroll_id = data.get("_scroll_id")
     hits = data["hits"]["hits"]
 
-    while hits:
-        for h in hits:
-            src = h["_source"]
-            citations = (src.get("citation_stats") or {}).get("total_citations", 0) or 0
-            authors = src.get("authors") or []
-            arxiv_id = src["arxiv_id"]
-            total += 1
+    try:
+        while hits:
+            for h in hits:
+                src = h["_source"]
+                citations = (src.get("citation_stats") or {}).get("total_citations", 0) or 0
+                authors = src.get("authors") or []
+                arxiv_id = src["arxiv_id"]
+                total += 1
 
-            for a in authors:
-                if isinstance(a, dict):
-                    name = a.get("name", "").strip()
-                else:
-                    name = str(a).strip()
-                if name:
-                    author_papers[name].append((arxiv_id, citations))
+                for a in authors:
+                    if isinstance(a, dict):
+                        name = a.get("name", "").strip()
+                    else:
+                        name = str(a).strip()
+                    if name:
+                        author_papers[name].append((arxiv_id, citations))
 
-        r = await http.post(
-            f"{ES_URL}/_search/scroll",
-            json={"scroll": "5m", "scroll_id": scroll_id},
-        )
-        data = r.json()
-        if r.status_code != 200 or "hits" not in data:
-            print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
-            break
-        scroll_id = data.get("_scroll_id")
-        hits = data["hits"]["hits"]
-
-    if scroll_id:
-        await http.request("DELETE", f"{ES_URL}/_search/scroll", json={"scroll_id": scroll_id})
+            r = await http.post(
+                f"{ES_URL}/_search/scroll",
+                json={"scroll": "5m", "scroll_id": scroll_id},
+            )
+            data = r.json()
+            if r.status_code != 200 or "hits" not in data:
+                print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
+                break
+            scroll_id = data.get("_scroll_id")
+            hits = data["hits"]["hits"]
+    finally:
+        if scroll_id:
+            await http.request("DELETE", f"{ES_URL}/_search/scroll", json={"scroll_id": scroll_id})
 
     print(f"Scanned {total} papers with citations > 0")
     print(f"Found {len(author_papers)} unique authors")
@@ -126,70 +127,71 @@ async def update_h_indices(
     scroll_id = data.get("_scroll_id")
     hits = data["hits"]["hits"]
 
-    while hits:
-        for h in hits:
-            src = h["_source"]
-            doc_id = h["_id"]
-            authors = src.get("authors") or []
-            first_author = src.get("first_author", "")
+    try:
+        while hits:
+            for h in hits:
+                src = h["_source"]
+                doc_id = h["_id"]
+                authors = src.get("authors") or []
+                first_author = src.get("first_author", "")
 
-            has_update = False
-            updated_authors = []
+                has_update = False
+                updated_authors = []
 
-            for a in authors:
-                if isinstance(a, dict):
-                    ac = dict(a)
-                    name = ac.get("name", "").strip()
-                    h_val = h_indices.get(name)
-                    if h_val is not None and ac.get("h_index") != h_val:
-                        ac["h_index"] = h_val
-                        has_update = True
-                    updated_authors.append(ac)
-                else:
-                    updated_authors.append(a)
+                for a in authors:
+                    if isinstance(a, dict):
+                        ac = dict(a)
+                        name = ac.get("name", "").strip()
+                        h_val = h_indices.get(name)
+                        if h_val is not None and ac.get("h_index") != h_val:
+                            ac["h_index"] = h_val
+                            has_update = True
+                        updated_authors.append(ac)
+                    else:
+                        updated_authors.append(a)
 
-            if not has_update:
-                continue
+                if not has_update:
+                    continue
 
-            doc: dict = {"authors": updated_authors}
+                doc: dict = {"authors": updated_authors}
 
-            # Update first_author_h_index
-            if first_author:
-                h_val = h_indices.get(first_author.strip())
-                if h_val is not None:
-                    doc["first_author_h_index"] = h_val
+                # Update first_author_h_index
+                if first_author:
+                    h_val = h_indices.get(first_author.strip())
+                    if h_val is not None:
+                        doc["first_author_h_index"] = h_val
 
-            bulk_body.append(json.dumps({"update": {"_id": doc_id}}))
-            bulk_body.append(json.dumps({"doc": doc}))
-            updated += 1
+                bulk_body.append(json.dumps({"update": {"_id": doc_id}}))
+                bulk_body.append(json.dumps({"doc": doc}))
+                updated += 1
 
-            if len(bulk_body) >= batch_size * 2:
-                if not dry_run:
-                    bulk_data = "\n".join(bulk_body) + "\n"
-                    r2 = await http.post(
-                        f"{ES_URL}/{INDEX}/_bulk",
-                        content=bulk_data.encode(),
-                        headers={"Content-Type": "application/x-ndjson"},
-                        timeout=120,
-                    )
-                    if r2.status_code != 200:
-                        print(f"  ES bulk error: {r2.status_code}")
-                print(f"  Flushed {len(bulk_body) // 2} updates (total: {updated})")
-                bulk_body = []
+                if len(bulk_body) >= batch_size * 2:
+                    if not dry_run:
+                        bulk_data = "\n".join(bulk_body) + "\n"
+                        r2 = await http.post(
+                            f"{ES_URL}/{INDEX}/_bulk",
+                            content=bulk_data.encode(),
+                            headers={"Content-Type": "application/x-ndjson"},
+                            timeout=120,
+                        )
+                        if r2.status_code != 200:
+                            print(f"  ES bulk error: {r2.status_code}")
+                    print(f"  Flushed {len(bulk_body) // 2} updates (total: {updated})")
+                    bulk_body = []
 
-        r = await http.post(
-            f"{ES_URL}/_search/scroll",
-            json={"scroll": "5m", "scroll_id": scroll_id},
-        )
-        data = r.json()
-        if r.status_code != 200 or "hits" not in data:
-            print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
-            break
-        scroll_id = data.get("_scroll_id")
-        hits = data["hits"]["hits"]
-
-    if scroll_id:
-        await http.request("DELETE", f"{ES_URL}/_search/scroll", json={"scroll_id": scroll_id})
+            r = await http.post(
+                f"{ES_URL}/_search/scroll",
+                json={"scroll": "5m", "scroll_id": scroll_id},
+            )
+            data = r.json()
+            if r.status_code != 200 or "hits" not in data:
+                print(f"ES scroll failed (status {r.status_code}): {str(data)[:300]}")
+                break
+            scroll_id = data.get("_scroll_id")
+            hits = data["hits"]["hits"]
+    finally:
+        if scroll_id:
+            await http.request("DELETE", f"{ES_URL}/_search/scroll", json={"scroll_id": scroll_id})
 
     # Flush remaining
     if bulk_body and not dry_run:
