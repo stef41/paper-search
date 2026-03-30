@@ -333,6 +333,8 @@ async def run_ingestion_cycle(
                 params["set"] = set_spec
 
         page_count = 0
+        empty_pages = 0
+        MAX_EMPTY_PAGES = 50  # Break if server returns 50 consecutive empty pages
 
         while True:
             try:
@@ -356,6 +358,7 @@ async def run_ingestion_cycle(
             page_count += 1
 
             if papers:
+                empty_pages = 0
                 # Track latest OAI datestamp for harvest resumption
                 for p in papers:
                     ds = p.pop("_oai_datestamp", None)
@@ -402,6 +405,12 @@ async def run_ingestion_cycle(
                     total_harvested=total_indexed,
                     status="running",
                 )
+
+            if not papers:
+                empty_pages += 1
+                if empty_pages >= MAX_EMPTY_PAGES:
+                    logger.warning("oai_too_many_empty_pages", count=empty_pages)
+                    break
 
             if not token:
                 break
