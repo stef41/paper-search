@@ -529,6 +529,7 @@ class GraphEngine:
             return ids[:10000]
         except Exception:
             # KNN may fail if no documents have the embedding field
+            logger.warning("semantic_prefilter_failed", exc_info=True)
             return None
 
     async def _agg_search(

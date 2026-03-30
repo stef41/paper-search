@@ -312,7 +312,24 @@ def create_app() -> FastAPI:
         es = await get_es_client()
         settings_obj = get_settings()
         engine = GraphEngine(es, settings_obj.es_index)
-        return await engine.execute(body.graph, sr, embeddings=embeddings)
+        try:
+            result = await asyncio.wait_for(
+                engine.execute(body.graph, sr, embeddings=embeddings),
+                timeout=120,
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Graph query timed out")
+
+        # Surface clear input-validation / not-found errors as proper HTTP codes.
+        # "no papers found", "need at least N papers", etc. are data-insufficiency
+        # responses, not client errors — leave those as 200 with metadata.
+        err = result.metadata.get("error", "")
+        if "required" in err or "same paper" in err or "max " in err:
+            raise HTTPException(status_code=400, detail=err)
+        if "not found" in err or "not in subgraph" in err:
+            raise HTTPException(status_code=404, detail=err)
+
+        return result
 
     @app.get(
         "/stats",
