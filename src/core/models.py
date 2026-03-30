@@ -567,17 +567,17 @@ class GraphQuery(BaseModel):
         description="Which side to project onto: papers, categories, or authors")
 
     # ── Pattern matching ──
-    pattern_nodes: list[PatternNode] | None = Field(default=None,
+    pattern_nodes: list[PatternNode] | None = Field(default=None, max_length=20,
         description="Nodes in the structural pattern to match")
-    pattern_edges: list[PatternEdge] | None = Field(default=None,
+    pattern_edges: list[PatternEdge] | None = Field(default=None, max_length=50,
         description="Edges in the structural pattern to match")
-    where: list[WhereCondition] | None = Field(default=None,
+    where: list[WhereCondition] | None = Field(default=None, max_length=20,
         description="Cross-node predicates for pattern matching (like Cypher WHERE)")
     max_expansion: int = Field(default=5, ge=1, le=50,
         description="Max BFS expansion rounds for pattern_match neighbor discovery")
 
     # ── Pipeline composition ──
-    pipeline_steps: list[PipelineStep] | None = Field(default=None,
+    pipeline_steps: list[PipelineStep] | None = Field(default=None, max_length=5,
         description="Ordered list of graph algorithm steps to chain")
 
     # ── Subgraph projection ──
@@ -599,11 +599,11 @@ class GraphQuery(BaseModel):
         description="Whether to include edges in traversal result")
 
     # ── Graph set operations ──
-    set_queries: list[dict[str, Any]] = Field(default_factory=list,
+    set_queries: list[dict[str, Any]] = Field(default_factory=list, max_length=5,
         description="Two sub-queries whose results to union/intersect. Each dict is a full graph query.")
 
     # ── Aggregation ──
-    aggregations: list[Aggregation] | None = Field(default=None,
+    aggregations: list[Aggregation] | None = Field(default=None, max_length=20,
         description="Aggregation functions to compute over results (like Cypher RETURN count/avg/sum)")
 
     # ── Path filtering ──
