@@ -191,9 +191,13 @@ async def fetch_oai_page(
 ) -> tuple[list[dict], str | None]:
     resp = await client.get(base_url, params=params, timeout=120)
     if resp.status_code == 503:
-        retry_after = int(resp.headers.get("Retry-After", 120))
+        try:
+            retry_after = int(resp.headers.get("Retry-After", 120))
+        except (ValueError, TypeError):
+            retry_after = 120
         logger.warning("oai_503_retry", retry_after=retry_after)
         await asyncio.sleep(min(retry_after, 300))
+        resp.raise_for_status()
     resp.raise_for_status()
 
     parser = XMLParser(resolve_entities=False, no_network=True)

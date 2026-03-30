@@ -139,7 +139,7 @@ async def main():
                 "references_stats": {
                     "total_references": fields["references_stats.total_references"],
                 },
-                "first_author_h_index": fields["first_author_h_index"],
+                "first_author_h_index": fields.get("first_author_h_index"),
                 "enrichment_source": "semantic_scholar",
                 "enriched_at": datetime.now(timezone.utc).isoformat(),
             }}

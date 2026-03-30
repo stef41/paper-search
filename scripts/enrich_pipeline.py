@@ -482,7 +482,7 @@ async def compute_hindex(http: httpx.AsyncClient) -> tuple[int, int]:
     h_indices: dict[str, int] = {}
     for name, cites in author_citations.items():
         h = _h_index(cites)
-            h_indices[name] = h
+        h_indices[name] = h
     if not h_indices:
         return 0, 0
 
