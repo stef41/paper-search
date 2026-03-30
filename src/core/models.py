@@ -140,7 +140,7 @@ class SearchRequest(BaseModel):
 
     # Fuzzy matching
     fuzzy: str | None = Field(default=None, max_length=500)
-    fuzzy_fuzziness: int = Field(default=2, ge=0, le=3)
+    fuzzy_fuzziness: int = Field(default=2, ge=0, le=2)
 
     # Regex search
     title_regex: str | None = Field(default=None, max_length=200)
@@ -148,8 +148,8 @@ class SearchRequest(BaseModel):
     author_regex: str | None = Field(default=None, max_length=200)
 
     # Author filters
-    author: str | None = None
-    first_author: str | None = None
+    author: str | None = Field(default=None, max_length=500)
+    first_author: str | None = Field(default=None, max_length=500)
     min_h_index: int | None = Field(default=None, ge=0)
     max_h_index: int | None = Field(default=None, ge=0)
     min_first_author_h_index: int | None = Field(default=None, ge=0)
@@ -162,7 +162,7 @@ class SearchRequest(BaseModel):
 
     # Category filters
     categories: list[str] | None = Field(default=None, max_length=50)
-    primary_category: str | None = None
+    primary_category: str | None = Field(default=None, max_length=50)
     exclude_categories: list[str] | None = Field(default=None, max_length=50)
 
     # Date filters
@@ -226,6 +226,17 @@ class SearchRequest(BaseModel):
         import re as _re
         if _re.search(r'\([^)]*[+*][^)]*\)[+*]', v):
             raise ValueError("Potentially dangerous regex pattern (nested quantifiers)")
+        # Block Python regex features unsupported by ES/Lucene regex engine
+        unsupported = _re.compile(
+            r'\\[dDwWsSbBAZG]'  # shorthand character classes
+            r'|\(\?[=!<:]'      # lookahead, lookbehind, non-capturing groups
+            r'|\(\?P'           # named groups
+        )
+        if unsupported.search(v):
+            raise ValueError(
+                "Regex uses Python-only features not supported by Elasticsearch. "
+                "Use character classes like [0-9] instead of \\d, [a-zA-Z] instead of \\w"
+            )
         # Validate syntax
         try:
             re.compile(v)
@@ -652,12 +663,12 @@ class GraphSearchRequest(BaseModel):
         return v
 
     fuzzy: str | None = Field(default=None, max_length=500)
-    fuzzy_fuzziness: int = Field(default=2, ge=0, le=3)
+    fuzzy_fuzziness: int = Field(default=2, ge=0, le=2)
     title_regex: str | None = Field(default=None, max_length=200)
     abstract_regex: str | None = Field(default=None, max_length=200)
     author_regex: str | None = Field(default=None, max_length=200)
-    author: str | None = None
-    first_author: str | None = None
+    author: str | None = Field(default=None, max_length=500)
+    first_author: str | None = Field(default=None, max_length=500)
     min_h_index: int | None = Field(default=None, ge=0)
     max_h_index: int | None = Field(default=None, ge=0)
     min_first_author_h_index: int | None = Field(default=None, ge=0)
@@ -666,7 +677,7 @@ class GraphSearchRequest(BaseModel):
     max_citations: int | None = Field(default=None, ge=0)
     min_references: int | None = Field(default=None, ge=0)
     categories: list[str] | None = Field(default=None, max_length=50)
-    primary_category: str | None = None
+    primary_category: str | None = Field(default=None, max_length=50)
     exclude_categories: list[str] | None = Field(default=None, max_length=50)
     submitted_date: DateRange | None = None
     updated_date: DateRange | None = None

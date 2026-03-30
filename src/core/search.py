@@ -92,10 +92,10 @@ class QueryBuilder:
         self._must_not = must_not
 
         # Full-text queries
-        if self.req.query:
+        if self.req.query and self.req.query.strip():
             should.append({
                 "multi_match": {
-                    "query": self.req.query,
+                    "query": self.req.query.strip(),
                     "fields": ["title^3", "abstract^2", "authors.name"],
                     "type": "best_fields",
                     "operator": self.req.operator,
@@ -104,22 +104,22 @@ class QueryBuilder:
                 }
             })
 
-        if self.req.title_query:
+        if self.req.title_query and self.req.title_query.strip():
             should.append({
                 "match": {
                     "title": {
-                        "query": self.req.title_query,
+                        "query": self.req.title_query.strip(),
                         "boost": 3,
                         "operator": self.req.operator,
                     }
                 }
             })
 
-        if self.req.abstract_query:
+        if self.req.abstract_query and self.req.abstract_query.strip():
             should.append({
                 "match": {
                     "abstract": {
-                        "query": self.req.abstract_query,
+                        "query": self.req.abstract_query.strip(),
                         "boost": 2,
                         "operator": self.req.operator,
                     }
@@ -127,10 +127,10 @@ class QueryBuilder:
             })
 
         # Fuzzy matching
-        if self.req.fuzzy:
+        if self.req.fuzzy and self.req.fuzzy.strip():
             should.append({
                 "multi_match": {
-                    "query": self.req.fuzzy,
+                    "query": self.req.fuzzy.strip(),
                     "fields": ["title^3", "abstract^2", "authors.name"],
                     "fuzziness": self.req.fuzzy_fuzziness,
                     "prefix_length": 2,

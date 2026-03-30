@@ -70,7 +70,8 @@ def _get_client_ip(request: Request) -> str:
                 continue
             if not any(addr in net for net in trusted_nets):
                 return ip
-        return ips[0].strip()  # all are proxies — use leftmost
+        # All entries are trusted proxies or invalid — use raw socket IP
+        return raw_ip
 
     return raw_ip
 
