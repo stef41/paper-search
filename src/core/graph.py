@@ -99,7 +99,7 @@ class FieldMapping:
                 self.has_code]
 
     def extract_id(self, src: dict) -> str:
-        return src.get(self.node_id, "")
+        return src.get(self.node_id) or ""
 
     def extract_label(self, src: dict) -> str:
         return src.get(self.node_label, src.get(self.node_id, ""))
@@ -3107,12 +3107,13 @@ class GraphEngine:
         if neighbor_ids_list:
             batches = [neighbor_ids_list[i:i + 200] for i in range(0, len(neighbor_ids_list), 200)]
             results = await asyncio.gather(*(
-                self.client.search(
+                self.client.options(request_timeout=15).search(
                     index=self.index,
                     body={
                         "query": {"terms": {F.node_id: batch}},
                         "size": len(batch),
                         "_source": _FIELDS,
+                        "timeout": "10s",
                     },
                 ) for batch in batches
             ), return_exceptions=True)
@@ -3262,7 +3263,9 @@ class GraphEngine:
                 neighbors.add(cid)
 
             if neighbors:
-                await _fetch(list(neighbors)[:10000])
+                to_fetch = list(neighbors)[:10000]
+                await _fetch(to_fetch)
+                neighbors = set(to_fetch)  # only explore fetched neighbors
 
             for nbr in neighbors:
                 if nbr in visited:
@@ -4918,9 +4921,9 @@ class GraphEngine:
             if len(dist) > 50000:
                 break
             if u not in paper_cache:
-                resp = await self.client.search(
+                resp = await self.client.options(request_timeout=15).search(
                     index=self.index,
-                    body={"query": {"term": {"arxiv_id": u}}, "size": 1, "_source": _FIELDS},
+                    body={"query": {"term": {"arxiv_id": u}}, "size": 1, "_source": _FIELDS, "timeout": "10s"},
                 )
                 hits = resp["hits"]["hits"]
                 if hits:
@@ -4975,9 +4978,9 @@ class GraphEngine:
             if to_fetch_filter:
                 for batch_start in range(0, len(to_fetch_filter), 200):
                     batch = to_fetch_filter[batch_start:batch_start + 200]
-                    batch_resp = await self.client.search(
+                    batch_resp = await self.client.options(request_timeout=15).search(
                         index=self.index,
-                        body={"query": {"terms": {"arxiv_id": batch}}, "size": len(batch), "_source": _FIELDS},
+                        body={"query": {"terms": {"arxiv_id": batch}}, "size": len(batch), "_source": _FIELDS, "timeout": "10s"},
                     )
                     for hit in batch_resp["hits"]["hits"]:
                         s = hit["_source"]
@@ -4993,9 +4996,9 @@ class GraphEngine:
         if to_fetch:
             for batch_start in range(0, len(to_fetch), 200):
                 batch = to_fetch[batch_start:batch_start + 200]
-                batch_resp = await self.client.search(
+                batch_resp = await self.client.options(request_timeout=15).search(
                     index=self.index,
-                    body={"query": {"terms": {"arxiv_id": batch}}, "size": len(batch), "_source": _FIELDS},
+                    body={"query": {"terms": {"arxiv_id": batch}}, "size": len(batch), "_source": _FIELDS, "timeout": "10s"},
                 )
                 for hit in batch_resp["hits"]["hits"]:
                     s = hit["_source"]
@@ -5075,9 +5078,9 @@ class GraphEngine:
         async def fetch(pid: str) -> dict | None:
             if pid in paper_cache:
                 return paper_cache[pid]
-            resp = await self.client.search(
+            resp = await self.client.options(request_timeout=15).search(
                 index=self.index,
-                body={"query": {"term": {"arxiv_id": pid}}, "size": 1, "_source": _FIELDS},
+                body={"query": {"term": {"arxiv_id": pid}}, "size": 1, "_source": _FIELDS, "timeout": "10s"},
             )
             if resp["hits"]["hits"]:
                 paper_cache[pid] = resp["hits"]["hits"][0]["_source"]
@@ -5840,9 +5843,9 @@ class GraphEngine:
                     "reference_ids", "cited_by_ids"]
         for pid in (source, target):
             if pid not in paper_data:
-                resp = await self.client.search(
+                resp = await self.client.options(request_timeout=15).search(
                     index=self.index,
-                    body={"query": {"term": {"arxiv_id": pid}}, "size": 1, "_source": _FIELDS},
+                    body={"query": {"term": {"arxiv_id": pid}}, "size": 1, "_source": _FIELDS, "timeout": "10s"},
                 )
                 if resp["hits"]["hits"]:
                     s = resp["hits"]["hits"][0]["_source"]
@@ -6461,12 +6464,13 @@ class GraphEngine:
             # Parallel ES batch fetches
             batches = [to_fetch[i:i + 200] for i in range(0, len(to_fetch), 200)]
             results = await asyncio.gather(*(
-                self.client.search(
+                self.client.options(request_timeout=15).search(
                     index=self.index,
                     body={
                         "query": {"terms": {"arxiv_id": batch}},
                         "size": len(batch),
                         "_source": _FIELDS,
+                        "timeout": "10s",
                     },
                 ) for batch in batches
             ), return_exceptions=True)
@@ -7285,9 +7289,9 @@ class GraphEngine:
                     nbr_filters.append({"term": {"has_github": sf.has_github}})
                 if len(nbr_filters) > 1:
                     nbr_query = {"bool": {"filter": nbr_filters}}
-                return await self.client.search(
+                return await self.client.options(request_timeout=15).search(
                     index=self.index,
-                    body={"query": nbr_query, "size": len(batch), "_source": _FIELDS},
+                    body={"query": nbr_query, "size": len(batch), "_source": _FIELDS, "timeout": "10s"},
                 )
             if fetch_batches:
                 batch_results = await asyncio.gather(*(_fetch_subgraph_batch(b) for b in fetch_batches), return_exceptions=True)
@@ -7502,12 +7506,13 @@ class GraphEngine:
 
             # Fetch paper if not cached
             if current_id not in paper_cache:
-                resp = await self.client.search(
+                resp = await self.client.options(request_timeout=15).search(
                     index=self.index,
                     body={
                         "query": {"term": {F.node_id: current_id}},
                         "size": 1,
                         "_source": _FIELDS,
+                        "timeout": "10s",
                     },
                 )
                 if resp["hits"]["hits"]:
@@ -7569,12 +7574,13 @@ class GraphEngine:
             if to_fetch:
                 batches = [to_fetch[i:i + 200] for i in range(0, len(to_fetch), 200)]
                 batch_results = await asyncio.gather(*(
-                    self.client.search(
+                    self.client.options(request_timeout=15).search(
                         index=self.index,
                         body={
                             "query": {"terms": {F.node_id: batch}},
                             "size": len(batch),
                             "_source": _FIELDS,
+                            "timeout": "10s",
                         },
                     ) for batch in batches
                 ), return_exceptions=True)
