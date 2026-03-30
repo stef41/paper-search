@@ -24,12 +24,12 @@ async def ensure_state_index(client: AsyncElasticsearch) -> None:
                             "source": {"type": "keyword"},
                             "last_harvested_date": {"type": "date"},
                             "resumption_token": {"type": "keyword"},
-                        "total_harvested": {"type": "long"},
-                        "last_run": {"type": "date"},
-                        "status": {"type": "keyword"},
-                        "metadata": {"type": "object", "enabled": False},
-                    }
-                },
+                            "total_harvested": {"type": "long"},
+                            "last_run": {"type": "date"},
+                            "status": {"type": "keyword"},
+                            "metadata": {"type": "object", "enabled": False},
+                        }
+                    },
             },
         )
         except BadRequestError as e:

@@ -76,6 +76,10 @@ class TestAuthorFilters:
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] >= 1    # Alice (60) and Grace (72)
+        for hit in data["hits"]:
+            assert hit.get("first_author_h_index", 0) >= 60, (
+                f"{hit['arxiv_id']}: first_author_h_index={hit.get('first_author_h_index')} < 60"
+            )
 
     @pytest.mark.integration
     def test_filter_nonexistent_author(self, client):
@@ -139,6 +143,9 @@ class TestCitationFilters:
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] >= 1
+        for hit in data["hits"]:
+            refs = hit.get("references_stats", {}).get("total_references", 0)
+            assert refs >= 60, f"{hit['arxiv_id']}: total_references={refs} < 60"
 
     @pytest.mark.integration
     def test_median_h_index_citing_filter(self, client):
@@ -150,6 +157,9 @@ class TestCitationFilters:
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] >= 1
+        for hit in data["hits"]:
+            median = hit.get("citation_stats", {}).get("median_h_index_citing_authors", 0)
+            assert median >= 30.0, f"{hit['arxiv_id']}: median_h_index_citing={median} < 30"
 
     @pytest.mark.integration
     def test_zero_citations_filter(self, client):
@@ -284,6 +294,9 @@ class TestDateFilters:
             headers=auth_headers(),
         )
         assert resp.status_code == 200
+        data = resp.json()
+        for hit in data["hits"]:
+            assert hit.get("updated_date", "") >= "2024-01-01"
 
 
 class TestMetadataFilters:

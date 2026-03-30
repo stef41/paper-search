@@ -166,7 +166,7 @@ class TestFuzzySearch:
             json={"fuzzy": "test", "fuzzy_fuzziness": 5},
             headers=auth_headers(),
         )
-        assert resp.status_code == 422  # Max fuzziness is 3
+        assert resp.status_code == 422  # Max fuzziness is 2 (ES limit)
 
 
 class TestRegexSearch:
