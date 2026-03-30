@@ -892,10 +892,10 @@ class GraphEngine:
             cat_counts[cat_a] = bucket["doc_count"]
             for co_bucket in bucket["co_cats"]["buckets"]:
                 cat_b = co_bucket["key"]
-                if cat_a >= cat_b:
-                    continue  # skip self and duplicates
-                pair = (cat_a, cat_b)
-                pair_counts[pair] = co_bucket["doc_count"]
+                if cat_a == cat_b:
+                    continue  # skip self-pair
+                a, b = (cat_a, cat_b) if cat_a < cat_b else (cat_b, cat_a)
+                pair_counts[(a, b)] = max(pair_counts.get((a, b), 0), co_bucket["doc_count"])
 
         # Filter by source/target if specified
         src_cats = set(gq.source_categories) if gq.source_categories else None
@@ -1811,9 +1811,10 @@ class GraphEngine:
             domain_counts[dom_a] = bucket["doc_count"]
             for co_bucket in bucket["co_domains"]["buckets"]:
                 dom_b = co_bucket["key"]
-                if dom_a >= dom_b:
+                if dom_a == dom_b:
                     continue
-                pair_counts[(dom_a, dom_b)] = co_bucket["doc_count"]
+                a, b = (dom_a, dom_b) if dom_a < dom_b else (dom_b, dom_a)
+                pair_counts[(a, b)] = max(pair_counts.get((a, b), 0), co_bucket["doc_count"])
 
         # Optional source/target filter (reuse category params for domains)
         src_doms = set(gq.source_categories) if gq.source_categories else None
@@ -2904,6 +2905,7 @@ class GraphEngine:
             chains.sort(key=lambda x: -x[1])
 
             # Reconstruct best chains
+            seen_edges: set[tuple[str, str]] = set()
             for start_id, chain_length in chains[:limit]:
                 _ensure_node(start_id)
                 cur = start_id
@@ -2920,8 +2922,11 @@ class GraphEngine:
                     if best_next is None:
                         break
                     _ensure_node(best_next)
-                    edges_out.append(GraphEdge(source=cur, target=best_next,
-                                               relation="chain_link"))
+                    ek = (cur, best_next)
+                    if ek not in seen_edges:
+                        seen_edges.add(ek)
+                        edges_out.append(GraphEdge(source=cur, target=best_next,
+                                                   relation="chain_link"))
                     visited_chain.add(best_next)
                     cur = best_next
                 found_patterns += 1
