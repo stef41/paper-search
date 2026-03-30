@@ -76,6 +76,12 @@ def validate_graph_integrity(data: dict, name: str) -> bool:
             if k not in e:
                 fail(name, data["took_ms"], f"Edge missing '{k}'")
                 return False
+        if e["source"] not in node_ids:
+            fail(name, data["took_ms"], f"Edge source '{e['source']}' not in nodes")
+            return False
+        if e["target"] not in node_ids:
+            fail(name, data["took_ms"], f"Edge target '{e['target']}' not in nodes")
+            return False
     return True
 
 

@@ -30,16 +30,18 @@ def _get_model():
 
 
 def encode_text(text: str) -> list[float]:
-    model = _get_model()
-    embedding = model.encode(text, normalize_embeddings=True)
+    with _model_lock:
+        model = _get_model()
+        embedding = model.encode(text, normalize_embeddings=True)
     return embedding.tolist()
 
 
 def encode_texts(texts: list[str], batch_size: int = 64) -> list[list[float]]:
     if not texts:
         return []
-    model = _get_model()
-    embeddings = model.encode(texts, batch_size=batch_size, normalize_embeddings=True)
+    with _model_lock:
+        model = _get_model()
+        embeddings = model.encode(texts, batch_size=batch_size, normalize_embeddings=True)
     return embeddings.tolist()
 
 
