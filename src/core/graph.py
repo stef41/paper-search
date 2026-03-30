@@ -330,7 +330,10 @@ class GraphEngine:
                 for n in paper_nodes:
                     v = n.properties.get(field)
                     if v is not None:
-                        collected.append(v)
+                        if isinstance(v, list):
+                            collected.extend(v)
+                        else:
+                            collected.append(v)
                 agg_results[agg.alias] = collected[:50000]
 
             elif fn == "group_count":
@@ -3171,7 +3174,7 @@ class GraphEngine:
             "citations": F.extract_citations(src),
             "submitted_date": src.get(F.node_timestamp),
             "authors": F.extract_authors(src),
-            "has_github": src.get("has_github"),
+            "has_github": src.get(F.has_code),
         }
         if extra_props:
             props.update(extra_props)
@@ -7575,7 +7578,7 @@ class GraphEngine:
                     if src.get(F.node_primary_category) != predicate["primary_category"]:
                         continue
                 if "has_github" in predicate:
-                    if src.get("has_github") != predicate["has_github"]:
+                    if src.get(F.has_code) != predicate["has_github"]:
                         continue
                 if "date_from" in predicate:
                     ts = src.get(F.node_timestamp, "")

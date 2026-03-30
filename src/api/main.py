@@ -245,6 +245,16 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         return response
 
+    # ── Generic JSON error handler ──
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception_handler(request: Request, exc: Exception):
+        logger.error("unhandled_exception", path=request.url.path, error=str(exc))
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+        )
+
     # ── Routes ──
 
     @app.get("/health")

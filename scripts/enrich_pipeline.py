@@ -90,15 +90,21 @@ _oa_cache: dict[str, str] = {}
 def load_cache() -> None:
     global _oa_cache
     if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE) as f:
-            _oa_cache = json.load(f)
-        print(f"  Loaded {len(_oa_cache):,} cached OpenAlex→arxiv mappings")
+        try:
+            with open(CACHE_FILE) as f:
+                _oa_cache = json.load(f)
+            print(f"  Loaded {len(_oa_cache):,} cached OpenAlex\u2192arxiv mappings")
+        except (json.JSONDecodeError, ValueError):
+            print("  WARNING: cache file is corrupt, starting fresh")
+            _oa_cache = {}
 
 
 def save_cache() -> None:
     os.makedirs(os.path.dirname(CACHE_FILE) or ".", exist_ok=True)
-    with open(CACHE_FILE, "w") as f:
+    tmp = CACHE_FILE + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(_oa_cache, f)
+    os.replace(tmp, CACHE_FILE)
     print(f"  Saved {len(_oa_cache):,} cached OpenAlex→arxiv mappings")
 
 
