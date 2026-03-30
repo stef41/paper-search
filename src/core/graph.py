@@ -175,6 +175,9 @@ _ctx_embeddings: contextvars.ContextVar[list[tuple[SemanticQuery, list[float]]] 
 _ctx_first_boost_emb: contextvars.ContextVar[list[float] | None] = contextvars.ContextVar(
     "_ctx_first_boost_emb", default=None
 )
+_ctx_projection_direction: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "_ctx_projection_direction", default=None
+)
 
 
 class GraphEngine:
@@ -282,6 +285,7 @@ class GraphEngine:
             _ctx_embeddings.set([])
             _ctx_first_boost_emb.set(None)
             _ctx_active_id_filter.set(None)
+            _ctx_projection_direction.set(None)
 
     def _apply_aggregations(
         self,
@@ -3116,14 +3120,21 @@ class GraphEngine:
             paper_data[F.extract_id(s)] = s
 
         # ── Expansion pass: fetch neighbor papers ──
+        # Respect projection direction when set by _subgraph_projection
+        proj_dir = _ctx_projection_direction.get()
+        expand_outgoing = proj_dir in (None, "references", "both")
+        expand_incoming = proj_dir in (None, "cited_by", "both")
+
         neighbor_ids: set[str] = set()
         for src in paper_data.values():
-            for rid in F.extract_outgoing(src):
-                if rid not in paper_data:
-                    neighbor_ids.add(rid)
-            for cid in F.extract_incoming(src):
-                if cid not in paper_data:
-                    neighbor_ids.add(cid)
+            if expand_outgoing:
+                for rid in F.extract_outgoing(src):
+                    if rid not in paper_data:
+                        neighbor_ids.add(rid)
+            if expand_incoming:
+                for cid in F.extract_incoming(src):
+                    if cid not in paper_data:
+                        neighbor_ids.add(cid)
 
         # Fetch neighbors in batches (parallel)
         neighbor_ids_list = list(neighbor_ids)[:10000]
@@ -3154,19 +3165,26 @@ class GraphEngine:
         in_edges: dict[str, set[str]] = defaultdict(set)
         undirected: dict[str, set[str]] = defaultdict(set)
 
+        # Respect projection direction when set by _subgraph_projection
+        proj_dir = _ctx_projection_direction.get()
+        follow_outgoing = proj_dir in (None, "references", "both")
+        follow_incoming = proj_dir in (None, "cited_by", "both")
+
         for aid, src in paper_data.items():
-            for rid in F.extract_outgoing(src):
-                if rid in node_ids:
-                    out_edges[aid].add(rid)
-                    in_edges[rid].add(aid)
-                    undirected[aid].add(rid)
-                    undirected[rid].add(aid)
-            for cid in F.extract_incoming(src):
-                if cid in node_ids:
-                    out_edges[cid].add(aid)
-                    in_edges[aid].add(cid)
-                    undirected[aid].add(cid)
-                    undirected[cid].add(aid)
+            if follow_outgoing:
+                for rid in F.extract_outgoing(src):
+                    if rid in node_ids:
+                        out_edges[aid].add(rid)
+                        in_edges[rid].add(aid)
+                        undirected[aid].add(rid)
+                        undirected[rid].add(aid)
+            if follow_incoming:
+                for cid in F.extract_incoming(src):
+                    if cid in node_ids:
+                        out_edges[cid].add(aid)
+                        in_edges[aid].add(cid)
+                        undirected[aid].add(cid)
+                        undirected[cid].add(aid)
 
         return paper_data, out_edges, in_edges, undirected
 
@@ -6675,7 +6693,6 @@ class GraphEngine:
             src = paper_cache.get(aid)
             if not src:
                 return _MISSING
-                return None
             if prop == "citations":
                 cs = src.get("citation_stats") or {}
                 return (cs.get("total_citations") or 0) if isinstance(cs, dict) else 0
@@ -7497,11 +7514,14 @@ class GraphEngine:
         # Pass projected_sr so handlers using _base_query are limited to projected IDs.
         # seed_arxiv_ids on algo_gq constrains _build_citation_subgraph users.
         prev_filter = _ctx_active_id_filter.get()
+        prev_direction = _ctx_projection_direction.get()
         _ctx_active_id_filter.set(projected_ids)
+        _ctx_projection_direction.set(sf.direction)
         try:
             result = await handler(algo_gq, projected_sr, None)
         finally:
             _ctx_active_id_filter.set(prev_filter)
+            _ctx_projection_direction.set(prev_direction)
 
         # Annotate with subgraph metadata
         result.metadata["subgraph_projection"] = {

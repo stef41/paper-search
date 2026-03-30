@@ -82,6 +82,10 @@ def parse_kaggle_record(record: dict) -> dict | None:
         if authors_str:
             for i, name in enumerate(re.split(r"\s+and\s+", authors_str)):
                 name = name.strip().rstrip(",")
+                # Normalize "Last, First" to "First Last" for consistency
+                if ", " in name:
+                    parts = name.split(", ", 1)
+                    name = f"{parts[1].strip()} {parts[0].strip()}".strip()
                 if name:
                     authors.append({
                         "name": name,

@@ -143,15 +143,19 @@ async def bulk_update_citations(
             skipped += 1
             continue
 
-        doc = {
-            "cited_by_ids": citers,
-            "citation_stats": {
-                "total_citations": len(citers),
-            },
+        script = {
+            "source": (
+                "ctx._source.cited_by_ids = params.citers;"
+                "if (ctx._source.citation_stats == null) {"
+                "  ctx._source.citation_stats = new HashMap();"
+                "}"
+                "ctx._source.citation_stats.total_citations = params.total;"
+            ),
+            "params": {"citers": citers, "total": len(citers)},
         }
 
         bulk_body.append(json.dumps({"update": {"_id": doc_id}}))
-        bulk_body.append(json.dumps({"doc": doc}))
+        bulk_body.append(json.dumps({"script": script, "upsert": {}}))
         updated += 1
 
         # Flush bulk buffer
