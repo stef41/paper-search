@@ -111,30 +111,36 @@ async def resolve_openalex_ids(
             params["mailto"] = email
 
         try:
-            r = await http.get(f"{OPENALEX_API}/works", params=params)
-            if r.status_code == 429:
-                wait = min(int(r.headers.get("Retry-After", 60)), 120)
-                print(f"    Rate limited, waiting {wait}s...")
-                await asyncio.sleep(wait)
+            r = None
+            for attempt in range(3):
                 r = await http.get(f"{OPENALEX_API}/works", params=params)
+                if r.status_code == 429:
+                    wait = min(int(r.headers.get("Retry-After", 60)), 120)
+                    print(f"    Rate limited (attempt {attempt+1}/3), waiting {wait}s...")
+                    await asyncio.sleep(wait)
+                else:
+                    break
 
-            if r.status_code == 200:
-                found_ids = set()
-                for w in r.json().get("results", []):
-                    oa_id = w["id"]
-                    doi = w.get("ids", {}).get("doi", "")
-                    arxiv_id = doi_to_arxiv(doi.replace("https://doi.org/", ""))
-                    found_ids.add(oa_id)
-                    if arxiv_id:
-                        result[oa_id] = arxiv_id
-                        _oa_cache[oa_id] = arxiv_id
-                    else:
-                        _oa_cache[oa_id] = ""  # cache negative: no arxiv DOI
+            if r is None or r.status_code != 200:
+                print(f"    OpenAlex resolve failed (status {r.status_code if r else 'N/A'}), skipping batch of {len(batch)}")
+                continue
 
-                # Mark IDs not returned by OpenAlex as empty (not found)
-                for oid in batch:
-                    if oid not in found_ids and oid not in _oa_cache:
-                        _oa_cache[oid] = ""
+            found_ids = set()
+            for w in r.json().get("results", []):
+                oa_id = w["id"]
+                doi = w.get("ids", {}).get("doi", "")
+                arxiv_id = doi_to_arxiv(doi.replace("https://doi.org/", ""))
+                found_ids.add(oa_id)
+                if arxiv_id:
+                    result[oa_id] = arxiv_id
+                    _oa_cache[oa_id] = arxiv_id
+                else:
+                    _oa_cache[oa_id] = ""  # cache negative: no arxiv DOI
+
+            # Mark IDs not returned by OpenAlex as empty (not found)
+            for oid in batch:
+                if oid not in found_ids and oid not in _oa_cache:
+                    _oa_cache[oid] = ""
 
         except Exception as e:
             print(f"    Ref resolution error: {e}")

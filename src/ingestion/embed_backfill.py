@@ -59,8 +59,8 @@ async def backfill_embeddings(
         if not hits:
             break
 
-        titles = [h["_source"]["title"] for h in hits]
-        abstracts = [h["_source"]["abstract"] for h in hits]
+        titles = [h["_source"].get("title") or "" for h in hits]
+        abstracts = [h["_source"].get("abstract") or "" for h in hits]
         ids = [h["_source"]["arxiv_id"] for h in hits]
 
         title_embs = encode_texts(titles, batch_size=64)

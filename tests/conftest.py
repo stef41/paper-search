@@ -308,6 +308,8 @@ async def es_client() -> AsyncGenerator[AsyncElasticsearch, None]:
                 break
         except Exception:
             await asyncio.sleep(1)
+    else:
+        pytest.fail("Elasticsearch not reachable after 60s")
 
     yield client
     await client.close()

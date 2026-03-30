@@ -490,12 +490,12 @@ def main():
 
     # Verdict
     print()
-    critical_failures = total_5xx > 0
+    critical_failures = total_5xx > 0 or total_other > total_reqs * 0.1
     high_latency = any(r.p99 > 10000 for r in results)
     low_throughput = any(r.rps < 5 for r in results if r.total_requests > 50)
 
     if critical_failures:
-        print("  🔴 VERDICT: FAIL — Server errors under load (5xx responses)")
+        print("  🔴 VERDICT: FAIL — Server errors under load (5xx or >10% connection failures)")
     elif high_latency:
         print("  🟡 VERDICT: DEGRADED — p99 latency exceeded 10s in some scenarios")
     elif low_throughput:

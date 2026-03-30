@@ -79,6 +79,10 @@ def main():
                 if args.max_papers > 0 and total >= args.max_papers:
                     break
 
+                # Truncate to remaining budget
+                if args.max_papers > 0:
+                    hits = hits[:args.max_papers - total]
+
                 # Extract texts
                 doc_ids = []
                 titles = []
