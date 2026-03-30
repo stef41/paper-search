@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import statistics
 import time
 from datetime import datetime, timezone
@@ -36,8 +37,14 @@ S2_DELAY = 3.1  # seconds between requests
 async def fetch_s2_paper(
     http: httpx.AsyncClient,
     arxiv_id: str,
-) -> dict | None:
-    """Fetch paper data from Semantic Scholar by ArXiv ID."""
+) -> dict | None | bool:
+    """Fetch paper data from Semantic Scholar by ArXiv ID.
+
+    Returns:
+        dict: paper data on success
+        False: definitive 404 (paper not in S2)
+        None: transient failure (should retry later)
+    """
     url = f"{S2_API}/paper/ARXIV:{arxiv_id}"
     params = {"fields": S2_FIELDS}
 
@@ -46,14 +53,18 @@ async def fetch_s2_paper(
             resp = await http.get(url, params=params, timeout=30)
 
             if resp.status_code == 404:
-                return None
+                return False
             if resp.status_code == 429:
                 wait = int(resp.headers.get("Retry-After", 60))
                 logger.warning("s2_rate_limited", wait=wait)
                 await asyncio.sleep(wait)
                 continue
             if resp.status_code == 200:
-                return resp.json()
+                try:
+                    return resp.json()
+                except (ValueError, json.JSONDecodeError):
+                    logger.warning("s2_json_error", arxiv_id=arxiv_id)
+                    return None
 
             logger.warning("s2_error", status=resp.status_code, arxiv_id=arxiv_id)
             await asyncio.sleep(5)
@@ -131,10 +142,13 @@ def compute_enrichment(s2_data: dict) -> dict:
     if authors:
         enriched_authors = []
         for i, a in enumerate(authors):
-            enriched_authors.append({
-                "h_index": a.get("hIndex"),
-                "citation_count": a.get("citationCount"),
-            })
+            if isinstance(a, dict):
+                enriched_authors.append({
+                    "h_index": a.get("hIndex"),
+                    "citation_count": a.get("citationCount"),
+                })
+            else:
+                enriched_authors.append({"h_index": None, "citation_count": None})
         result["_author_enrichment"] = enriched_authors
 
     return result
@@ -194,7 +208,7 @@ async def enrich_papers(
 
                 s2_data = await fetch_s2_paper(http, arxiv_id)
 
-                if s2_data:
+                if s2_data and s2_data is not False:
                     enrichment = compute_enrichment(s2_data)
 
                     # Merge author enrichment
@@ -223,8 +237,8 @@ async def enrich_papers(
                         await asyncio.sleep(S2_DELAY)
                         continue
                     total_enriched += 1
-                else:
-                    # Mark paper so it's not retried on every future run
+                elif s2_data is False:
+                    # Definitive 404 — paper not in Semantic Scholar
                     try:
                         await es.update(
                             index=settings.es_index,

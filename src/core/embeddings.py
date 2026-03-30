@@ -13,7 +13,7 @@ from src.core.config import get_settings
 logger = structlog.get_logger()
 
 _model = None
-_model_lock = threading.Lock()
+_model_lock = threading.RLock()
 
 
 def _get_model():

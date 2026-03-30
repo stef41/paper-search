@@ -134,8 +134,14 @@ async def lifespan(app: FastAPI):
         logger.info("app_started")
         yield
     finally:
-        await close_es_client()
-        await close_redis_client()
+        try:
+            await close_es_client()
+        except Exception:
+            logger.error("failed_to_close_es")
+        try:
+            await close_redis_client()
+        except Exception:
+            logger.error("failed_to_close_redis")
         logger.info("app_stopped")
 
 
