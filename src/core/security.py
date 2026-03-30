@@ -90,14 +90,17 @@ def validate_regex_pattern(pattern: str, max_length: int = 200) -> str:
 def validate_search_request(request: Any) -> None:
     settings = get_settings()
 
-    # Strip null bytes and validate query length
-    if request.query:
-        request.query = request.query.replace("\x00", "")
-        if len(request.query) > settings.max_query_length:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Query too long (max {settings.max_query_length} chars)",
-            )
+    # Strip null bytes from all text query fields
+    for text_field in ("query", "title_query", "abstract_query", "fuzzy"):
+        val = getattr(request, text_field, None)
+        if val:
+            setattr(request, text_field, val.replace("\x00", ""))
+
+    if request.query and len(request.query) > settings.max_query_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Query too long (max {settings.max_query_length} chars)",
+        )
 
     for field in ("title_regex", "abstract_regex", "author_regex"):
         val = getattr(request, field, None)
