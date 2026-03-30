@@ -1352,7 +1352,7 @@ class GraphEngine:
                     overlap = len(ref_set & set(cat_papers[cat]))
                     if overlap > 0:
                         edges.append(GraphEdge(
-                            source=sp["arxiv_id"], target=cat,
+                            source=sp.get("arxiv_id", ""), target=cat,
                             relation=relation, weight=overlap,
                         ))
 
@@ -1495,8 +1495,8 @@ class GraphEngine:
                     if ref_id not in seen:
                         seen.add(ref_id)
                         nodes.append(self._make_paper_node(lp, {"role": "linked"}))
-                    src_id = sp["arxiv_id"] if direction == "references" else ref_id
-                    tgt_id = ref_id if direction == "references" else sp["arxiv_id"]
+                    src_id = sp.get("arxiv_id", "") if direction == "references" else ref_id
+                    tgt_id = ref_id if direction == "references" else sp.get("arxiv_id", "")
                     edges.append(GraphEdge(source=src_id, target=tgt_id, relation="cites"))
                     edge_count += 1
 
@@ -1745,8 +1745,8 @@ class GraphEngine:
                 sim = float(sim_matrix[i][j])
                 if sim >= threshold:
                     edges.append(GraphEdge(
-                        source=papers[i][0]["arxiv_id"],
-                        target=papers[j][0]["arxiv_id"],
+                        source=papers[i][0].get("arxiv_id", ""),
+                        target=papers[j][0].get("arxiv_id", ""),
                         relation="similar_to",
                         weight=round(sim, 4),
                     ))
@@ -2107,8 +2107,8 @@ class GraphEngine:
                 shared = len(papers[i][1] & papers[j][1])
                 if shared > 0:
                     edges.append(GraphEdge(
-                        source=papers[i][0]["arxiv_id"],
-                        target=papers[j][0]["arxiv_id"],
+                        source=papers[i][0].get("arxiv_id", ""),
+                        target=papers[j][0].get("arxiv_id", ""),
                         relation="shared_references",
                         weight=shared,
                     ))
@@ -2199,8 +2199,8 @@ class GraphEngine:
                 shared = len(papers[i][1] & papers[j][1])
                 if shared > 0:
                     edges.append(GraphEdge(
-                        source=papers[i][0]["arxiv_id"],
-                        target=papers[j][0]["arxiv_id"],
+                        source=papers[i][0].get("arxiv_id", ""),
+                        target=papers[j][0].get("arxiv_id", ""),
                         relation="co_cited",
                         weight=shared,
                     ))
