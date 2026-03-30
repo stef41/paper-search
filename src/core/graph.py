@@ -526,7 +526,7 @@ class GraphEngine:
             if not ids:
                 # No embeddings stored yet — skip pre-filter gracefully
                 return None
-            return ids
+            return ids[:10000]
         except Exception:
             # KNN may fail if no documents have the embedding field
             return None
