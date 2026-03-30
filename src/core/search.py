@@ -160,7 +160,7 @@ class QueryBuilder:
                 "nested": {
                     "path": "authors",
                     "query": {
-                        "match": {"authors.name": self.req.author}
+                        "match": {"authors.name": {"query": self.req.author, "operator": "and"}}
                     },
                 }
             })
@@ -172,7 +172,7 @@ class QueryBuilder:
                     "query": {
                         "bool": {
                             "must": [
-                                {"match": {"authors.name": self.req.first_author}},
+                                {"match": {"authors.name": {"query": self.req.first_author, "operator": "and"}}},
                                 {"term": {"authors.is_first_author": True}},
                             ]
                         }
