@@ -266,7 +266,8 @@ def create_app() -> FastAPI:
             redis_status = "error"
 
         status = "healthy" if es_status in ("green", "yellow") and redis_status == "ok" else "degraded"
-        return {"status": status}
+        code = 200 if status == "healthy" else 503
+        return JSONResponse(content={"status": status}, status_code=code)
 
     @app.post(
         "/search",
@@ -356,6 +357,11 @@ def create_app() -> FastAPI:
         settings_obj = get_settings()
         engine = SearchEngine(es, settings_obj.es_index)
         paper = await engine.get_paper(arxiv_id)
+        if paper is None:
+            # Retry without version suffix (2301.12345v2 → 2301.12345)
+            stripped = re.sub(r'v\d+$', '', arxiv_id)
+            if stripped != arxiv_id:
+                paper = await engine.get_paper(stripped)
         if paper is None:
             raise HTTPException(status_code=404, detail="Paper not found")
         return paper
