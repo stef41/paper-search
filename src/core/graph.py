@@ -1614,9 +1614,11 @@ class GraphEngine:
                 properties={"paper_count": bucket["doc_count"]},
             ))
             if direction == "references":
-                edges.append(GraphEdge(source=seed, target=name, relation="influences", weight=bucket["doc_count"]))
-            else:
+                # Seed references their work → they influenced seed
                 edges.append(GraphEdge(source=name, target=seed, relation="influences", weight=bucket["doc_count"]))
+            else:
+                # Their work cites seed → seed influenced them
+                edges.append(GraphEdge(source=seed, target=name, relation="influences", weight=bucket["doc_count"]))
 
         return GraphResponse(
             nodes=nodes, edges=edges,
@@ -1908,7 +1910,7 @@ class GraphEngine:
         seen_cats: set[str] = set()
         seen_times: set[str] = set()
 
-        for tb in resp["aggregations"]["over_time"]["buckets"][:limit]:
+        for tb in resp["aggregations"]["over_time"]["buckets"]:
             time_key = tb["key_as_string"]
             if time_key not in seen_times:
                 seen_times.add(time_key)
