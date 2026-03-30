@@ -100,8 +100,10 @@ class DateRange(BaseModel):
             g, l = self.gte, self.lte
             if g.tzinfo is not None and l.tzinfo is None:
                 l = l.replace(tzinfo=g.tzinfo)
+                self.lte = l
             elif l.tzinfo is not None and g.tzinfo is None:
                 g = g.replace(tzinfo=l.tzinfo)
+                self.gte = g
             if g > l:
                 raise ValueError(
                     f"DateRange gte ({self.gte.date()}) must not exceed lte ({self.lte.date()})"

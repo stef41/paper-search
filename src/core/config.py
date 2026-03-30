@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +29,20 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 120
     rate_limit_burst: int = 20
     ddos_rate_limit: str = "600/minute"
+
+    @field_validator("ddos_rate_limit")
+    @classmethod
+    def _validate_ddos_rate_limit(cls, v: str) -> str:
+        if "/" not in v:
+            raise ValueError("ddos_rate_limit must be in 'N/window' format, e.g. '600/minute'")
+        parts = v.split("/", 1)
+        try:
+            int(parts[0])
+        except ValueError:
+            raise ValueError(f"ddos_rate_limit count must be an integer, got '{parts[0]}'")
+        if parts[1] not in ("second", "minute", "hour"):
+            raise ValueError(f"ddos_rate_limit window must be second/minute/hour, got '{parts[1]}'")
+        return v
 
     # Ingestion
     arxiv_oai_base_url: str = "https://oaipmh.arxiv.org/oai"
