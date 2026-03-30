@@ -1854,6 +1854,7 @@ class GraphEngine:
         """How an author's research topics evolve over time.  Returns a
         tripartite graph: author → time-period → category, showing the
         category distribution per time bucket."""
+        limit = min(gq.limit or 50, self.MAX_RESULTS)
         seed = gq.seed_author
         if not seed:
             return GraphResponse(
@@ -1900,7 +1901,7 @@ class GraphEngine:
         seen_cats: set[str] = set()
         seen_times: set[str] = set()
 
-        for tb in resp["aggregations"]["over_time"]["buckets"]:
+        for tb in resp["aggregations"]["over_time"]["buckets"][:limit]:
             time_key = tb["key_as_string"]
             if time_key not in seen_times:
                 seen_times.add(time_key)
@@ -2259,7 +2260,7 @@ class GraphEngine:
                                  metadata={"error": "no_seed_papers"})
 
         _FIELDS = ["arxiv_id", "title", "categories", "primary_category",
-                    "authors", "submitted_date", "citation_stats"]
+                    "authors", "submitted_date", "citation_stats", "has_github"]
 
         nodes: list[GraphNode] = []
         edges: list[GraphEdge] = []
@@ -2359,7 +2360,7 @@ class GraphEngine:
         max_depth = min(gq.max_hops, 50)
         _FIELDS = ["arxiv_id", "title", "categories", "primary_category",
                     "authors", "submitted_date", "citation_stats",
-                    "reference_ids", "cited_by_ids"]
+                    "reference_ids", "cited_by_ids", "has_github"]
 
         # BFS state: id → (parent_id, direction_used)
         forward_parents: dict[str, str | None] = {source_id: None}
@@ -3206,7 +3207,7 @@ class GraphEngine:
 
         _FIELDS = ["arxiv_id", "title", "categories", "primary_category",
                     "authors", "submitted_date", "citation_stats",
-                    "reference_ids", "cited_by_ids"]
+                    "reference_ids", "cited_by_ids", "has_github"]
 
         paper_cache: dict[str, dict] = {}
 
@@ -4580,7 +4581,7 @@ class GraphEngine:
         # Add top influenced papers
         influenced_ranked = sorted(influenced_set,
                                     key=lambda x: -len(undirected.get(x, set())))
-        for aid in influenced_ranked[:limit - len(selected_seeds)]:
+        for aid in influenced_ranked[:max(limit - len(selected_seeds), 0)]:
             if aid not in result_ids and aid in paper_data:
                 result_ids.add(aid)
                 src = paper_data.get(aid, {"arxiv_id": aid})
@@ -4912,7 +4913,7 @@ class GraphEngine:
         # Hop-by-hop BFS like weighted_shortest_path
         _FIELDS = ["arxiv_id", "title", "categories", "primary_category",
                     "authors", "submitted_date", "citation_stats",
-                    "reference_ids", "cited_by_ids"]
+                    "reference_ids", "cited_by_ids", "has_github"]
 
         paper_cache: dict[str, dict] = {}
         adj: dict[str, set[str]] = defaultdict(set)
@@ -5078,7 +5079,7 @@ class GraphEngine:
 
         _FIELDS = ["arxiv_id", "title", "categories", "primary_category",
                     "authors", "submitted_date", "citation_stats",
-                    "reference_ids", "cited_by_ids"]
+                    "reference_ids", "cited_by_ids", "has_github"]
 
         paper_cache: dict[str, dict] = {}
 
@@ -5851,7 +5852,7 @@ class GraphEngine:
         # Ensure both endpoints are in the subgraph
         _FIELDS = ["arxiv_id", "title", "categories", "primary_category",
                     "authors", "submitted_date", "citation_stats",
-                    "reference_ids", "cited_by_ids"]
+                    "reference_ids", "cited_by_ids", "has_github"]
         for pid in (source, target):
             if pid not in paper_data:
                 resp = await self.client.options(request_timeout=15).search(

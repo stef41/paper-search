@@ -238,8 +238,7 @@ async def openalex_fetch_refs_batch(
             "enriched_at": now_str,
             "references_stats": {"total_references": ref_count},
         }
-        if ref_arxiv_ids:
-            doc["reference_ids"] = ref_arxiv_ids
+        doc["reference_ids"] = ref_arxiv_ids
 
         bulk_body.append(json.dumps({"update": {"_id": p["_id"]}}))
         bulk_body.append(json.dumps({"doc": doc}))
@@ -367,7 +366,7 @@ async def compute_citations(http: httpx.AsyncClient) -> tuple[int, int]:
             for h in hits:
                 src = h["_source"]
                 total_papers += 1
-                for ref_id in (src.get("reference_ids") or []):
+                for ref_id in set(src.get("reference_ids") or []):
                     cited_by[ref_id].append(src["arxiv_id"])
 
             r = await http.post(f"{ES_URL}/_search/scroll", json={"scroll": "5m", "scroll_id": scroll_id})
@@ -483,9 +482,7 @@ async def compute_hindex(http: httpx.AsyncClient) -> tuple[int, int]:
     h_indices: dict[str, int] = {}
     for name, cites in author_citations.items():
         h = _h_index(cites)
-        if h > 0:
             h_indices[name] = h
-
     if not h_indices:
         return 0, 0
 
