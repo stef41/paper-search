@@ -6660,6 +6660,7 @@ class GraphEngine:
 
         # WHERE condition helpers
         where_conditions = gq.where or []
+        _MISSING = object()  # Sentinel: property missing on a real paper
 
         def _resolve_property(alias: str, prop: str, assignment: dict[str, str | None]) -> Any:
             """Resolve alias.property to a value from paper_cache."""
@@ -6668,6 +6669,7 @@ class GraphEngine:
                 return None
             src = paper_cache.get(aid)
             if not src:
+                return _MISSING
                 return None
             if prop == "citations":
                 cs = src.get("citation_stats") or {}
@@ -6694,9 +6696,10 @@ class GraphEngine:
                     if isinstance(obj, dict):
                         obj = obj.get(part)
                     else:
-                        return None
-                return obj
-            return src.get(prop)
+                        return _MISSING
+                return obj if obj is not None else _MISSING
+            val = src.get(prop)
+            return val if val is not None else _MISSING
 
         _KNOWN_PROPERTIES = {
             "arxiv_id", "title", "abstract", "authors",
@@ -6759,7 +6762,12 @@ class GraphEngine:
                 left_val = _resolve_value(wc.left, assignment)
                 right_val = _resolve_value(wc.right, assignment)
                 if left_val is None or right_val is None:
-                    continue  # Skip null comparisons
+                    continue  # Optional alias unbound — skip condition
+                if left_val is _MISSING or right_val is _MISSING:
+                    # Property missing on a real paper
+                    if wc.op in ("!=", "not_in"):
+                        continue  # null != anything → condition passes
+                    return False  # All other comparisons fail
 
                 try:
                     def _compare(a: Any, b: Any) -> tuple[Any, Any]:
@@ -6767,7 +6775,13 @@ class GraphEngine:
                         try:
                             return float(a), float(b)
                         except (TypeError, ValueError):
-                            return str(a), str(b)
+                            sa, sb = str(a), str(b)
+                            # Normalise dates to YYYY-MM-DD for fair comparison
+                            if len(sa) >= 10 and sa[4:5] == "-" and sa[7:8] == "-":
+                                sa = sa[:10]
+                            if len(sb) >= 10 and sb[4:5] == "-" and sb[7:8] == "-":
+                                sb = sb[:10]
+                            return sa, sb
 
                     if wc.op in (">", "<", ">=", "<=", "==", "!="):
                         cmp_l, cmp_r = _compare(left_val, right_val)
