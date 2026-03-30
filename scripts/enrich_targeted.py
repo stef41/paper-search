@@ -83,7 +83,10 @@ async def main():
                     if resp.status_code == 200:
                         break
                     if resp.status_code == 429:
-                        wait = int(resp.headers.get("Retry-After", 30))
+                        try:
+                            wait = int(resp.headers.get("Retry-After", 30))
+                        except (ValueError, TypeError):
+                            wait = 30
                         print(f"  Rate limited, waiting {wait}s...")
                         await asyncio.sleep(wait)
                         continue

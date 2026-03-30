@@ -76,7 +76,7 @@ class TestSorting:
         )
         assert resp.status_code == 200
         data = resp.json()
-        pages = [h["page_count"] for h in data["hits"] if h["page_count"]]
+        pages = [h["page_count"] for h in data["hits"] if h["page_count"] is not None]
         assert len(pages) >= 2, "Need at least 2 papers with page_count to verify sort order"
         for i in range(len(pages) - 1):
             assert pages[i] >= pages[i + 1]

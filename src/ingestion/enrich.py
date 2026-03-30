@@ -55,7 +55,10 @@ async def fetch_s2_paper(
             if resp.status_code == 404:
                 return False
             if resp.status_code == 429:
-                wait = int(resp.headers.get("Retry-After", 60))
+                try:
+                    wait = int(resp.headers.get("Retry-After", 60))
+                except (ValueError, TypeError):
+                    wait = 60
                 logger.warning("s2_rate_limited", wait=wait)
                 await asyncio.sleep(wait)
                 continue
