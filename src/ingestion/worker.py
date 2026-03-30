@@ -70,8 +70,8 @@ def parse_oai_record(record_xml: Any) -> dict | None:
     if arx is None:
         return None
 
-    title = arx.findtext("arx:title", "", OAI_NAMESPACES).strip()
-    abstract = arx.findtext("arx:abstract", "", OAI_NAMESPACES).strip()
+    title = re.sub(r"\s+", " ", arx.findtext("arx:title", "", OAI_NAMESPACES)).strip()
+    abstract = re.sub(r"\s+", " ", arx.findtext("arx:abstract", "", OAI_NAMESPACES)).strip()
     if not title or not abstract:
         return None
     categories_str = arx.findtext("arx:categories", "", OAI_NAMESPACES).strip()
@@ -128,6 +128,12 @@ def parse_oai_record(record_xml: Any) -> dict | None:
             segments.extend(re.split(r"\s+and\s+", line))
         for i, name in enumerate(segments):
             name = name.strip().strip(",")
+            if not name:
+                continue
+            # Normalize "Last, First" to "First Last" for consistency
+            if ", " in name:
+                parts = name.split(", ", 1)
+                name = f"{parts[1].strip()} {parts[0].strip()}".strip()
             if name:
                 author_list.append({
                     "name": name,
