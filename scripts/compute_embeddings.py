@@ -103,6 +103,10 @@ def main():
                     normalize_embeddings=True, show_progress_bar=False,
                 )
 
+                if len(title_embs) != len(doc_ids) or len(abstract_embs) != len(doc_ids):
+                    print(f"  WARNING: embedding count mismatch (titles={len(title_embs)}, abstracts={len(abstract_embs)}, docs={len(doc_ids)}), skipping batch")
+                    continue
+
                 # Bulk update to ES
                 bulk_lines: list[str] = []
                 for i, doc_id in enumerate(doc_ids):

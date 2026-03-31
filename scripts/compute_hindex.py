@@ -176,6 +176,11 @@ async def update_h_indices(
                         )
                         if r2.status_code != 200:
                             print(f"  ES bulk error: {r2.status_code}")
+                        else:
+                            br_json = r2.json()
+                            if br_json.get("errors"):
+                                errs = sum(1 for it in br_json.get("items", []) if "error" in it.get("update", {}))
+                                print(f"  WARNING: {errs} bulk update errors")
                     print(f"  Flushed {len(bulk_body) // 2} updates (total: {updated})")
                     bulk_body = []
 
@@ -204,6 +209,11 @@ async def update_h_indices(
         )
         if r2.status_code != 200:
             print(f"  ES bulk error: {r2.status_code}")
+        else:
+            br_json = r2.json()
+            if br_json.get("errors"):
+                errs = sum(1 for it in br_json.get("items", []) if "error" in it.get("update", {}))
+                print(f"  WARNING: {errs} bulk update errors")
     if bulk_body:
         print(f"  Flushed final {len(bulk_body) // 2} updates (total: {updated})")
 

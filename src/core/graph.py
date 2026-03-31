@@ -715,7 +715,7 @@ class GraphEngine:
         seen_authors.add(seed)
 
         # 1st-degree co-authors — reserve budget for 2nd-degree if depth>=2
-        first_limit = (limit // 2) if depth >= 2 else limit
+        first_limit = max(1, limit // 2) if depth >= 2 else limit
         first_degree = sorted(author_papers.items(), key=lambda x: -x[1])[:first_limit]
         for name, count in first_degree:
             if name not in seen_authors and name.lower() != seed_lower:
@@ -6984,7 +6984,7 @@ class GraphEngine:
         musts.append(base)
 
         f = pnode.filters
-        if "categories" in f and isinstance(f["categories"], list):
+        if "categories" in f and isinstance(f["categories"], list) and f["categories"]:
             filters.append({"terms": {"categories": [str(c) for c in f["categories"]]}})
         if "primary_category" in f:
             filters.append({"term": {"primary_category": str(f["primary_category"])}})
@@ -7650,7 +7650,6 @@ class GraphEngine:
             if direction in ("incoming", "both"):
                 incoming_ids = F.extract_incoming(src)
             neighbor_ids: list[str] = outgoing_ids + incoming_ids
-            outgoing_set = set(outgoing_ids)
 
             # Batch-fetch neighbors not yet cached
             to_fetch = [nid for nid in neighbor_ids if nid not in paper_cache and nid not in visited][:2000]

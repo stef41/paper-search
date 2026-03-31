@@ -86,7 +86,7 @@ def compute_enrichment(s2: dict) -> dict:
 async def main():
     batch_size = int(sys.argv[1]) if len(sys.argv) > 1 else 200
 
-    async with httpx.AsyncClient() as http:
+    async with httpx.AsyncClient(timeout=30) as http:
         # Find recent papers (last 2 years) that haven't been enriched
         query = {
             "query": {
