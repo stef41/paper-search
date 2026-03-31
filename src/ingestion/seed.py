@@ -80,7 +80,7 @@ def parse_api_entry(entry) -> dict | None:
         if name:
             authors.append({
                 "name": name,
-                "is_first_author": i == 0,
+                "is_first_author": len(authors) == 0,
                 "h_index": None,
                 "citation_count": None,
             })

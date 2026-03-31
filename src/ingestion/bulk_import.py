@@ -70,7 +70,7 @@ def parse_kaggle_record(record: dict) -> dict | None:
             if name:
                 authors.append({
                     "name": name,
-                    "is_first_author": i == 0,
+                    "is_first_author": len(authors) == 0,
                     "h_index": None,
                     "citation_count": None,
                 })
@@ -89,7 +89,7 @@ def parse_kaggle_record(record: dict) -> dict | None:
                 if name:
                     authors.append({
                         "name": name,
-                        "is_first_author": i == 0,
+                        "is_first_author": len(authors) == 0,
                         "h_index": None,
                         "citation_count": None,
                     })

@@ -1142,8 +1142,6 @@ class GraphEngine:
         pct_values = pct_resp["aggregations"]["citation_pct"]["values"]
         # ES returns keys like "90.0"
         threshold = pct_values.get(str(float(percentile)), 0)
-        if threshold is None:
-            threshold = 0
         total_with_cites = pct_resp["aggregations"]["total_with_citations"]["value"]
 
         if threshold < 1:

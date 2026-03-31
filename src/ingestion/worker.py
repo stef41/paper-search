@@ -137,7 +137,7 @@ def parse_oai_record(record_xml: Any) -> dict | None:
             if name:
                 author_list.append({
                     "name": name,
-                    "is_first_author": i == 0,
+                    "is_first_author": len(author_list) == 0,
                     "h_index": None,
                     "citation_count": None,
                 })
