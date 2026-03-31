@@ -3171,14 +3171,14 @@ class GraphEngine:
         for aid, src in paper_data.items():
             if follow_outgoing:
                 for rid in F.extract_outgoing(src):
-                    if rid in node_ids:
+                    if rid in node_ids and rid != aid:
                         out_edges[aid].add(rid)
                         in_edges[rid].add(aid)
                         undirected[aid].add(rid)
                         undirected[rid].add(aid)
             if follow_incoming:
                 for cid in F.extract_incoming(src):
-                    if cid in node_ids:
+                    if cid in node_ids and cid != aid:
                         out_edges[cid].add(aid)
                         in_edges[aid].add(cid)
                         undirected[aid].add(cid)
@@ -6537,7 +6537,7 @@ class GraphEngine:
 
         for aid, src in paper_cache.items():
             for rid in (src.get("reference_ids", []) or []):
-                if rid in paper_cache:
+                if rid in paper_cache and rid != aid:
                     out_edges[aid].add(rid)
                     in_edges[rid].add(aid)
 
@@ -7387,14 +7387,14 @@ class GraphEngine:
         for aid, src in paper_data.items():
             if sf.direction in ("references", "both"):
                 for rid in (src.get("reference_ids", []) or []):
-                    if rid in paper_data:
+                    if rid in paper_data and rid != aid:
                         out_edges[aid].add(rid)
                         in_edges[rid].add(aid)
                         undirected[aid].add(rid)
                         undirected[rid].add(aid)
             if sf.direction in ("cited_by", "both"):
                 for cid in (src.get("cited_by_ids", []) or []):
-                    if cid in paper_data:
+                    if cid in paper_data and cid != aid:
                         in_edges[aid].add(cid)
                         out_edges[cid].add(aid)
                         undirected[aid].add(cid)
