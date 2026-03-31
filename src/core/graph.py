@@ -2991,11 +2991,11 @@ class GraphEngine:
         adj: dict[str, set[str]] = defaultdict(set)
         for aid, src in paper_data.items():
             for rid in (src.get("reference_ids", []) or []):
-                if rid in node_ids:
+                if rid in node_ids and rid != aid:
                     adj[aid].add(rid)
                     adj[rid].add(aid)
             for cid in (src.get("cited_by_ids", []) or []):
-                if cid in node_ids:
+                if cid in node_ids and cid != aid:
                     adj[aid].add(cid)
                     adj[cid].add(aid)
 
