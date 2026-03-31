@@ -102,6 +102,9 @@ async def main():
             results = resp.json()
             if len(results) != len(arxiv_ids):
                 print(f"  WARNING: S2 returned {len(results)} results for {len(arxiv_ids)} papers")
+                # Pad with None so no papers are silently dropped
+                while len(results) < len(arxiv_ids):
+                    results.append(None)
             bulk_body = []
             batch_enriched = 0
 
