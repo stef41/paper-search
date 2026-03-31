@@ -744,7 +744,7 @@ class GraphEngine:
                 sub_resp = await self._agg_search(sub_combined, aggs, size=0, sr=sr, emb=emb)
                 for bucket in sub_resp["aggregations"]["coauthors"]["names"]["buckets"]:
                     name2 = bucket["key"]
-                    if name2 == coauthor or name2.lower() == seed_lower:
+                    if name2.lower() == coauthor.lower() or name2.lower() == seed_lower:
                         continue
                     if name2 not in seen_authors:
                         nodes.append(GraphNode(

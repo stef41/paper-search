@@ -67,7 +67,8 @@ async def scan_references(http: httpx.AsyncClient) -> dict[str, list[str]]:
                 total_refs += len(refs)
 
                 for ref_id in set(refs):
-                    cited_by[ref_id].append(citing_id)
+                    if ref_id != citing_id:
+                        cited_by[ref_id].append(citing_id)
 
             # Get next scroll page
             r = await http.post(
@@ -191,6 +192,13 @@ async def bulk_update_citations(
         )
         if r.status_code != 200:
             print(f"  ES bulk error: {r.status_code}")
+        elif r.json().get("errors"):
+            errs = [
+                item["update"]["error"]["reason"]
+                for item in r.json()["items"]
+                if "error" in item.get("update", {})
+            ]
+            print(f"  ES bulk had {len(errs)} errors: {errs[:3]}")
     if bulk_body:
         print(f"  Flushed final {len(bulk_body) // 2} updates (total: {updated})")
 

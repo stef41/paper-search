@@ -379,7 +379,8 @@ async def compute_citations(http: httpx.AsyncClient) -> tuple[int, int]:
                 src = h["_source"]
                 total_papers += 1
                 for ref_id in set(src.get("reference_ids") or []):
-                    cited_by[ref_id].append(src["arxiv_id"])
+                    if ref_id != src["arxiv_id"]:
+                        cited_by[ref_id].append(src["arxiv_id"])
 
             r = await http.post(f"{ES_URL}/_search/scroll", json={"scroll": "5m", "scroll_id": scroll_id})
             data = r.json()
