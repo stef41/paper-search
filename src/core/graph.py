@@ -6498,6 +6498,8 @@ class GraphEngine:
         max_expansion = gq.max_expansion
         already_attempted: set[str] = set()  # Track IDs we already tried to fetch
         for _ in range(max_expansion):
+            if len(paper_cache) >= 50000:
+                break
             neighbor_ids: set[str] = set()
             for src in paper_cache.values():
                 for rid in (src.get("reference_ids", []) or []):
