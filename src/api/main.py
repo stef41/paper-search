@@ -235,11 +235,15 @@ def create_app() -> FastAPI:
 
         if len(hits) >= _ddos_max:
             logger.warning("ddos_blocked", ip=client_ip, hits=len(hits), window=_ddos_window)
-            return Response(
+            resp = Response(
                 content='{"detail":"Too many requests from this IP. Slow down."}',
                 status_code=429,
                 media_type="application/json",
             )
+            resp.headers["X-Content-Type-Options"] = "nosniff"
+            resp.headers["X-Frame-Options"] = "DENY"
+            resp.headers["Cache-Control"] = "no-store"
+            return resp
 
         hits.append(now)
         response = await call_next(request)
