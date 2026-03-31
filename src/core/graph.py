@@ -1505,8 +1505,9 @@ class GraphEngine:
 
         edge_count = 0
         for sp in seed_papers:
+            sp_id = sp.get("arxiv_id", "")
             for ref_id in set(sp.get(field, []) or []):
-                if ref_id in linked_map and edge_count < limit * 10:
+                if ref_id in linked_map and ref_id != sp_id and edge_count < limit * 10:
                     lp = linked_map[ref_id]
                     if ref_id not in seen:
                         seen.add(ref_id)
@@ -2302,6 +2303,8 @@ class GraphEngine:
             next_ids: set[str] = set()
             for aid, src in current_frontier.items():
                 for linked_id in set(src.get(field, []) or []):
+                    if linked_id == aid:
+                        continue
                     # Add edge for all links (including back-edges to already-seen nodes)
                     if direction == "references":
                         edges.append(GraphEdge(source=aid, target=linked_id, relation="cites"))
@@ -5895,13 +5898,13 @@ class GraphEngine:
                     s = resp["hits"]["hits"][0]["_source"]
                     paper_data[pid] = s
                     for rid in (s.get("reference_ids", []) or []):
-                        if rid in paper_data:
+                        if rid in paper_data and rid != pid:
                             out_edges.setdefault(pid, set()).add(rid)
                             in_edges.setdefault(rid, set()).add(pid)
                             undirected.setdefault(pid, set()).add(rid)
                             undirected.setdefault(rid, set()).add(pid)
                     for cid in (s.get("cited_by_ids", []) or []):
-                        if cid in paper_data:
+                        if cid in paper_data and cid != pid:
                             in_edges.setdefault(pid, set()).add(cid)
                             out_edges.setdefault(cid, set()).add(pid)
                             undirected.setdefault(pid, set()).add(cid)
@@ -7679,11 +7682,15 @@ class GraphEngine:
             # Record edges separately — a node can appear in both outgoing and incoming
             if collect_edges:
                 for nid in outgoing_ids:
+                    if nid == current_id:
+                        continue
                     ek = (current_id, nid)
                     if nid in visited and ek not in seen_edges:
                         seen_edges.add(ek)
                         edges_out.append(GraphEdge(source=current_id, target=nid, relation="cites"))
                 for nid in incoming_ids:
+                    if nid == current_id:
+                        continue
                     ek = (nid, current_id)
                     if nid in visited and ek not in seen_edges:
                         seen_edges.add(ek)
