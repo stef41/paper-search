@@ -15,6 +15,7 @@ env/
 .env
 .env.local
 .env.*.local
+.env.example
 
 # IDE
 .idea/
@@ -31,6 +32,10 @@ models/
 
 # Docker
 docker-compose.override.yml
+docker-compose.yml
+docker-compose.test.yml
+Dockerfile
+Dockerfile.*
 
 # OS
 .DS_Store
@@ -44,3 +49,13 @@ logs/
 .coverage
 htmlcov/
 .pytest_cache/
+pytest.ini
+
+# Application code (hosted separately)
+src/
+scripts/
+tests/
+requirements*.txt
+pilot_proxy.py
+pilot-entrypoint.sh
+.tunnel_url
