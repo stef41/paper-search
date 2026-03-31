@@ -28,7 +28,7 @@ from src.core.elasticsearch import get_es_client, ensure_index, close_es_client
 logger = structlog.get_logger()
 
 S2_API = "https://api.semanticscholar.org/graph/v1"
-S2_FIELDS = "citationCount,influentialCitationCount,references.fieldsOfStudy,citations.citationCount,citations.fieldsOfStudy,citations.authors.hIndex,authors.hIndex,authors.citationCount,externalIds"
+S2_FIELDS = "citationCount,influentialCitationCount,references.externalIds,references.fieldsOfStudy,citations.externalIds,citations.citationCount,citations.fieldsOfStudy,citations.authors.hIndex,authors.hIndex,authors.citationCount,externalIds"
 
 # Semantic Scholar rate limit: 100 requests per 5 minutes (free tier)
 S2_DELAY = 3.1  # seconds between requests
@@ -125,10 +125,14 @@ def compute_enrichment(s2_data: dict) -> dict:
     # Reference stats
     references = s2_data.get("references", []) or []
     ref_categories = []
+    ref_arxiv_ids: list[str] = []
     for ref in references:
         if isinstance(ref, dict):
             fos = ref.get("fieldsOfStudy") or []
             ref_categories.extend(fos)
+            ext = ref.get("externalIds") or {}
+            if isinstance(ext, dict) and ext.get("ArXiv"):
+                ref_arxiv_ids.append(ext["ArXiv"])
 
     ref_cat_counts: dict[str, int] = {}
     for c in ref_categories:
@@ -140,6 +144,19 @@ def compute_enrichment(s2_data: dict) -> dict:
         "avg_reference_age_years": None,
         "top_referenced_categories": top_ref_cats,
     }
+
+    # Extract citation and reference arxiv IDs for graph building
+    if ref_arxiv_ids:
+        result["reference_ids"] = list(dict.fromkeys(ref_arxiv_ids))
+
+    cited_by_arxiv_ids: list[str] = []
+    for cit in citations:
+        if isinstance(cit, dict):
+            ext = cit.get("externalIds") or {}
+            if isinstance(ext, dict) and ext.get("ArXiv"):
+                cited_by_arxiv_ids.append(ext["ArXiv"])
+    if cited_by_arxiv_ids:
+        result["cited_by_ids"] = list(dict.fromkeys(cited_by_arxiv_ids))
 
     # Update author-level data
     if authors:
