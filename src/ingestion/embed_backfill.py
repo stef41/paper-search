@@ -96,6 +96,8 @@ async def backfill_embeddings(
                     logger.warning("bulk_embed_errors", failed=failed, batch=len(ids))
         except Exception as e:
             logger.error("embed_batch_failed", error=str(e), batch=len(hits))
+            search_after = hits[-1]["sort"]
+            continue
 
         total += len(hits)
         elapsed = time.monotonic() - start_time

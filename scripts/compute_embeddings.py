@@ -105,6 +105,16 @@ def main():
 
                 if len(title_embs) != len(doc_ids) or len(abstract_embs) != len(doc_ids):
                     print(f"  WARNING: embedding count mismatch (titles={len(title_embs)}, abstracts={len(abstract_embs)}, docs={len(doc_ids)}), skipping batch")
+                    total += len(hits)
+                    # Fetch next scroll page so we don't re-process the same batch
+                    r = http.post(f"{ES_URL}/_search/scroll", json={
+                        "scroll": "10m", "scroll_id": scroll_id,
+                    })
+                    data = r.json()
+                    if r.status_code != 200 or "hits" not in data:
+                        break
+                    scroll_id = data.get("_scroll_id")
+                    hits = data.get("hits", {}).get("hits", [])
                     continue
 
                 # Bulk update to ES

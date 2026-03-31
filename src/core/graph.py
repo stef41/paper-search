@@ -2653,7 +2653,7 @@ class GraphEngine:
         for aid, src in paper_data.items():
             for a in (src.get("authors") or [])[:50]:
                 name = a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")
-                if name:
+                if name and aid not in author_papers[name]:
                     author_papers[name].append(aid)
         for name, papers in author_papers.items():
             if len(papers) > 1:
@@ -5586,7 +5586,7 @@ class GraphEngine:
         for aid, src in paper_data.items():
             for a in (src.get("authors") or [])[:50]:
                 name = a.get("name", "") if isinstance(a, dict) else (str(a) if a is not None else "")
-                if name:
+                if name and aid not in author_papers[name]:
                     author_papers[name].append(aid)
         for name, papers in author_papers.items():
             if len(papers) > 1:
