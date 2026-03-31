@@ -248,7 +248,7 @@ class QueryBuilder:
                 # Date-only input parses as midnight; round to end-of-day
                 # so "lte: 2024-01-15" includes the entire day.
                 if lte_dt.hour == 0 and lte_dt.minute == 0 and lte_dt.second == 0 and lte_dt.microsecond == 0:
-                    lte_dt = lte_dt.replace(hour=23, minute=59, second=59)
+                    lte_dt = lte_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
                 date_range["lte"] = lte_dt.isoformat()
             if date_range:
                 filter_clauses.append({"range": {"submitted_date": date_range}})
@@ -260,7 +260,7 @@ class QueryBuilder:
             if self.req.updated_date.lte:
                 lte_dt_u = self.req.updated_date.lte
                 if lte_dt_u.hour == 0 and lte_dt_u.minute == 0 and lte_dt_u.second == 0 and lte_dt_u.microsecond == 0:
-                    lte_dt_u = lte_dt_u.replace(hour=23, minute=59, second=59)
+                    lte_dt_u = lte_dt_u.replace(hour=23, minute=59, second=59, microsecond=999999)
                 date_range_u["lte"] = lte_dt_u.isoformat()
             if date_range_u:
                 filter_clauses.append({"range": {"updated_date": date_range_u}})
@@ -522,8 +522,8 @@ class SearchEngine:
                 "max": aggs["max_date"].get("value_as_string"),
             },
             papers_with_github=aggs["github_count"]["doc_count"],
-            avg_page_count=aggs["avg_pages"]["value"] if math.isfinite(aggs["avg_pages"]["value"] or 0) else None,
-            avg_citations=aggs["avg_citations"]["value"] if math.isfinite(aggs["avg_citations"]["value"] or 0) else None,
+            avg_page_count=aggs["avg_pages"]["value"] if aggs["avg_pages"]["value"] is not None and math.isfinite(aggs["avg_pages"]["value"]) else None,
+            avg_citations=aggs["avg_citations"]["value"] if aggs["avg_citations"]["value"] is not None and math.isfinite(aggs["avg_citations"]["value"]) else None,
         )
 
     async def get_paper(self, arxiv_id: str) -> dict | None:

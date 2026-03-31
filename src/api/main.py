@@ -267,14 +267,14 @@ def create_app() -> FastAPI:
         redis_status = "unknown"
         try:
             es = await get_es_client()
-            info = await es.cluster.health()
+            info = await asyncio.wait_for(es.cluster.health(), timeout=5)
             es_status = info["status"]
         except Exception:
             es_status = "error"
 
         try:
             r = await get_redis_client()
-            await r.ping()
+            await asyncio.wait_for(r.ping(), timeout=5)
             redis_status = "ok"
         except Exception:
             redis_status = "error"
